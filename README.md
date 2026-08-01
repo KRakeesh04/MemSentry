@@ -430,13 +430,13 @@ Run the GUI with:
 python -m memsentry
 ```
 
-Run the analysis worker directly for development testing with:
+<!-- Run the analysis worker directly for development testing with:
 
 ```bash
 python -m memsentry.worker --job path/to/analysis_job.json
 ```
 
-The worker should normally be started by the GUI rather than manually.
+The worker should normally be started by the GUI rather than manually. -->
 
 ---
 

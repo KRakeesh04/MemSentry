@@ -35,10 +35,6 @@ classifiers = [
 ]
 
 
-[project.scripts]
-memsentry-worker = "memsentry.worker.__main__:main"
-
-
 [project.gui-scripts]
 memsentry = "memsentry.__main__:main"
 

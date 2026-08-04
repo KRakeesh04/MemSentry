@@ -100,3 +100,10 @@ __pyinstaller/
 # Local Configuration
 local_settings.yaml
 config.local.yaml
+
+# PyInstaller Output
+build/
+dist/
+
+
+MemSentry.spec

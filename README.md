@@ -478,61 +478,48 @@ mypy src
 
 ---
 
-## Packaging
+## Building the Application
 
-The recommended first packaging method is PyInstaller in one-directory mode.
+The easiest way to package MemSentry as a standalone desktop application is using **PyInstaller**.
 
-### Build the Worker
+### Build the Application
 
-```powershell
-pyinstaller `
-  --noconfirm `
-  --clean `
-  --onedir `
-  --console `
-  --name MemSentryWorker `
-  --paths src `
-  --collect-all volatility3 `
-  src\memsentry\worker\__main__.py
+Run the following command from the project root:
+
+```bash
+pyinstaller \
+    --name MemSentry \
+    --windowed \
+    --onefile \
+    --paths src \
+    src/memsentry/__main__.py
 ```
+<!-- ADD this when icon is ready -->
+<!-- --add-data "resources:resources" \
+--icon resources/icons/memsentry.ico \ -->
 
-### Build the GUI
+### Build Output
 
-```powershell
-pyinstaller `
-  --noconfirm `
-  --clean `
-  --onedir `
-  --windowed `
-  --name MemSentry `
-  --icon resources\icons\memsentry.ico `
-  --paths src `
-  --add-data "resources;resources" `
-  src\memsentry\__main__.py
-```
-
-The worker output should be copied into the GUI distribution.
-
-Example portable structure:
+After the build finishes, PyInstaller creates two new folders:
 
 ```text
-MemSentry-Portable/
-├── MemSentry.exe
-├── _internal/
-├── worker/
-│   ├── MemSentryWorker.exe
-│   └── _internal/
-├── resources/
-├── workspace/
-│   ├── cases/
-│   ├── logs/
-│   ├── cache/
-│   └── temp/
-├── THIRD_PARTY_NOTICES.txt
-└── checksums.sha256
+build/
+dist/
 ```
 
-The packaged application should not require Python, Rust, Node.js, or Volatility to be separately installed on the investigator’s machine.
+The executable is located inside the **dist** folder.
+
+```text
+dist/
+└── MemSentry.exe      (Windows)
+
+or
+
+dist/
+└── MemSentry          (Linux/macOS)
+```
+
+Simply open the executable to launch the MemSentry GUI. No separate Python installation is required on the target machine.
 
 ---
 
@@ -1032,3 +1019,39 @@ memsentry/
 
 
 ```
+
+### Project Structure Description
+
+| Path | Purpose |
+|------|---------|
+| `pyproject.toml` | Project metadata, dependencies, and package configuration. |
+| `requirements.txt` | Runtime dependencies required by the application. |
+| `requirements-dev.txt` | Development tools such as pytest, Ruff and mypy. |
+| `README.md` | Project documentation and setup instructions. |
+| `LICENSE` | Software license. |
+| `.gitignore` | Files and folders ignored by Git. |
+| `memsentry.spec` | PyInstaller build configuration. |
+| `src/` | Contains all application source code. |
+| `src/memsentry/__main__.py` | Main entry point that launches the GUI. |
+| `src/memsentry/__init__.py` | Initializes the package and stores package metadata. |
+| `src/memsentry/version.py` | Stores the application version. |
+| `app/` | Application startup, configuration, paths and logging. |
+| `gui/` | Entire PySide6 graphical user interface. |
+| `case_management/` | Handles case creation, metadata and chain-of-custody information. |
+| `evidence/` | Evidence validation, hashing and integrity verification. |
+| `worker/` | Background worker responsible for running analysis without freezing the GUI. |
+| `volatility/` | Interfaces with Volatility 3 and parses plugin outputs. |
+| `models/` | Pydantic data models representing forensic artifacts. |
+| `normalisation/` | Converts raw plugin outputs into standardized internal objects. |
+| `correlation/` | Links related artifacts and calculates process risk scores. |
+| `graph/` | Builds evidence relationship graphs for visualization and export. |
+| `storage/` | SQLite database access, migrations and repositories. |
+| `reporting/` | Generates JSON and HTML forensic reports. |
+| `yara/` | Executes YARA scans and validates rule files. |
+| `utils/` | Common helper functions shared across the project. |
+| `resources/` | Static resources including icons, templates, YARA rules and configuration files. |
+| `runtime/` | Runtime-generated cases, logs, cache and temporary files. |
+| `tests/` | Unit, integration and GUI tests. |
+| `scripts/` | Helper scripts for setup, execution, verification and packaging. |
+| `packaging/` | Packaging configuration for PyInstaller, installers and portable builds. |
+| `docs/` | Project documentation, architecture diagrams and user guides. |

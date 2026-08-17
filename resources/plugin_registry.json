@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "0.1.0",
   "plugins": [
     {
       "id": "system_info",
@@ -7,14 +7,10 @@
       "description": "Displays general operating system and kernel information.",
       "category": "System",
       "supported_os": [
-        "windows",
-        "linux",
-        "mac"
+        "windows"
       ],
       "volatility_plugins": {
-        "windows": "windows.info",
-        "linux": "linux.info",
-        "mac": "mac.info"
+        "windows": "windows.info.Info"
       },
       "parser": "info_parser",
       "default_enabled": true,
@@ -32,9 +28,9 @@
         "mac"
       ],
       "volatility_plugins": {
-        "windows": "windows.pslist",
-        "linux": "linux.pslist",
-        "mac": "mac.pslist"
+        "windows": "windows.pslist.PsList",
+        "linux": "linux.pslist.PsList",
+        "mac": "mac.pslist.PsList"
       },
       "parser": "pslist_parser",
       "default_enabled": true,
@@ -51,8 +47,8 @@
         "linux"
       ],
       "volatility_plugins": {
-        "windows": "windows.pstree",
-        "linux": "linux.pstree"
+        "windows": "windows.pstree.PsTree",
+        "linux": "linux.pstree.PsTree"
       },
       "parser": "pstree_parser",
       "default_enabled": true,
@@ -70,9 +66,9 @@
         "mac"
       ],
       "volatility_plugins": {
-        "windows": "windows.cmdline",
-        "linux": "linux.cmdline",
-        "mac": "mac.psaux"
+        "windows": "windows.cmdline.CmdLine",
+        "linux": "linux.psaux.PsAux",
+        "mac": "mac.psaux.Psaux"
       },
       "parser": "cmdline_parser",
       "default_enabled": true,
@@ -90,9 +86,9 @@
         "mac"
       ],
       "volatility_plugins": {
-        "windows": "windows.netscan",
-        "linux": "linux.netstat",
-        "mac": "mac.netstat"
+        "windows": "windows.netscan.NetScan",
+        "linux": "linux.sockstat.Sockstat",
+        "mac": "mac.netstat.Netstat"
       },
       "parser": "netscan_parser",
       "default_enabled": true,
@@ -110,9 +106,9 @@
         "mac"
       ],
       "volatility_plugins": {
-        "windows": "windows.dlllist",
-        "linux": "linux.elfs",
-        "mac": "mac.list_files"
+        "windows": "windows.dlllist.DllList",
+        "linux": "linux.elfs.Elfs",
+        "mac": "mac.list_files.List_Files"
       },
       "parser": "dlllist_parser",
       "default_enabled": true,
@@ -128,7 +124,7 @@
         "windows"
       ],
       "volatility_plugins": {
-        "windows": "windows.malfind"
+        "windows": "windows.malfind.Malfind"
       },
       "parser": "malfind_parser",
       "default_enabled": true,
@@ -144,7 +140,7 @@
         "windows"
       ],
       "volatility_plugins": {
-        "windows": "windows.handles"
+        "windows": "windows.handles.Handles"
       },
       "parser": "handles_parser",
       "default_enabled": false,

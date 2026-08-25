@@ -107,3 +107,5 @@ dist/
 
 
 MemSentry.spec
+
+test_db.py

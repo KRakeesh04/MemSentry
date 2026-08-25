@@ -31,10 +31,8 @@ class Database:
         self.timeout_seconds = timeout_seconds
 
     def initialize(self) -> None:
-        """
-        Prepare the database directory and create the SQLite file
-        if it does not already exist.
-        """
+        """Create the database and apply pending migrations."""
+
         self.database_path.parent.mkdir(
             parents=True,
             exist_ok=True,
@@ -42,6 +40,11 @@ class Database:
 
         with self.connection():
             pass
+
+        from memsentry.storage.migrations import MigrationManager
+
+        migration_manager = MigrationManager(self)
+        migration_manager.apply_pending_migrations()
 
         logger.info(
             "Database initialized: %s",

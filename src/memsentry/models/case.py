@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from pydantic import BaseModel
 
 
-class CaseStatus(str, Enum):
+class CaseStatus(StrEnum):
     """Possible lifecycle states for a case."""
 
     OPEN = "open"
@@ -19,6 +19,13 @@ class CaseCreate(BaseModel):
     """Data required when creating a new case."""
 
     case_number: str
+    name: str
+    description: str | None = None
+
+
+class CaseUpdate(BaseModel):
+    """Data allowed when updating an existing case."""
+
     name: str
     description: str | None = None
 

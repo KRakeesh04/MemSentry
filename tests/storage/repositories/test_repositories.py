@@ -386,3 +386,274 @@ def test_finding_evidence_repository(db: Database) -> None:
     ev_list = repo.list_by_finding(finding.id)
     assert len(ev_list) == 1
     assert ev_list[0].supporting_data["pid"] == 4096
+
+
+def test_repository_empty_list_results(db: Database) -> None:
+    """Test that list methods return empty lists when no records exist."""
+    case_repo = CaseRepository(db)
+    evidence_repo = EvidenceRepository(db)
+    analysis_repo = AnalysisRunRepository(db)
+    plugin_repo = PluginRunRepository(db)
+    finding_repo = FindingRepository(db)
+    finding_ev_repo = FindingEvidenceRepository(db)
+
+    assert case_repo.list_all() == []
+    assert evidence_repo.list_by_case(uuid4()) == []
+    assert analysis_repo.list_by_evidence(uuid4()) == []
+    assert plugin_repo.list_by_analysis_run(uuid4()) == []
+    assert finding_repo.list_by_analysis_run(uuid4()) == []
+    assert finding_repo.list_by_severity(uuid4(), FindingSeverity.HIGH) == []
+    assert finding_ev_repo.list_by_finding(uuid4()) == []
+
+
+def test_repository_special_characters_in_strings(db: Database) -> None:
+    """Test handling of special characters in text fields."""
+    case_repo = CaseRepository(db)
+    
+    # Test with special characters that might cause SQL issues
+    special_name = "Test' with \"quotes\" and \\backslashes\\ and ;semicolons;"
+    case = case_repo.create(
+        CaseCreate(
+            case_number="SPECIAL-001",
+            name=special_name,
+            description="Description with 'single' and \"double\" quotes",
+        )
+    )
+    assert case.name == special_name
+    assert "'" in case.description
+    assert '"' in case.description
+    
+    # Retrieve and verify
+    retrieved = case_repo.get_by_id(case.id)
+    assert retrieved is not None
+    assert retrieved.name == special_name
+
+
+def test_repository_none_handling(db: Database) -> None:
+    """Test proper handling of None/NULL values."""
+    case_repo = CaseRepository(db)
+    evidence_repo = EvidenceRepository(db)
+    finding_repo = FindingRepository(db)
+    
+    case = case_repo.create(
+        CaseCreate(
+            case_number="NONE-001",
+            name="Test Case",
+            description=None,  # Explicit None
+        )
+    )
+    assert case.description is None
+    
+    # Evidence with None OS
+    evidence = evidence_repo.create(
+        EvidenceCreate(
+            case_id=case.id,
+            original_filename="test.raw",
+            file_path=Path("/tmp/test.raw"),
+            file_size_bytes=1000,
+            sha256="a" * 64,
+            evidence_os=None,
+        )
+    )
+    assert evidence.evidence_os is None
+    
+    # Finding with None confidence
+    analysis_run = AnalysisRunRepository(db).create(
+        AnalysisRunCreate(
+            evidence_id=evidence.id,
+            application_version="0.1.0",
+            volatility_version="2.4.1",
+            host_os=HostOS.LINUX,
+        )
+    )
+    finding = finding_repo.create(
+        FindingCreate(
+            analysis_run_id=analysis_run.id,
+            rule_id="RULE-001",
+            title="Test",
+            description="Test描述",
+            severity=FindingSeverity.MEDIUM,
+            confidence=None,
+        )
+    )
+    assert finding.confidence is None
+
+
+def test_repository_json_serialization_edge_cases(db: Database) -> None:
+    """Test JSON serialization/deserialization edge cases."""
+    case = CaseRepository(db).create(CaseCreate(case_number="JSON-001", name="Case"))
+    evidence = EvidenceRepository(db).create(
+        EvidenceCreate(
+            case_id=case.id,
+            original_filename="test.raw",
+            file_path=Path("/tmp/test.raw"),
+            file_size_bytes=1000,
+            sha256="a" * 64,
+        )
+    )
+    analysis_run = AnalysisRunRepository(db).create(
+        AnalysisRunCreate(
+            evidence_id=evidence.id,
+            application_version="0.1.0",
+            volatility_version="2.4.1",
+            host_os=HostOS.LINUX,
+        )
+    )
+    
+    # Test plugin run with complex nested config
+    plugin_repo = PluginRunRepository(db)
+    complex_config = {
+        "nested": {
+            "deep": {
+                "value": 123,
+                "list": [1, 2, 3],
+                "unicode": "测试中文",
+            }
+        },
+        "special_chars": "'\"\\;{}[]",
+        "empty_dict": {},
+        "empty_list": [],
+    }
+    
+    plugin_run = plugin_repo.create(
+        PluginRunCreate(
+            analysis_run_id=analysis_run.id,
+            plugin_name="test.plugin",
+            configuration=complex_config,
+        )
+    )
+    assert plugin_run.configuration == complex_config
+    
+    # Test finding evidence with complex supporting data
+    finding = FindingRepository(db).create(
+        FindingCreate(
+            analysis_run_id=analysis_run.id,
+            rule_id="RULE-001",
+            title="Test",
+            description="Test",
+            severity=FindingSeverity.HIGH,
+        )
+    )
+    
+    finding_ev_repo = FindingEvidenceRepository(db)
+    complex_supporting = {
+        "process": {
+            "pid": 1234,
+            "name": "svchost.exe",
+            "command_line": "C:\\Windows\\System32\\svchost.exe -k netsvcs",
+        },
+        "hex_dump": "00 01 02 03",
+        "timestamps": ["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"],
+    }
+    
+    finding_ev = finding_ev_repo.create(
+        FindingEvidenceCreate(
+            finding_id=finding.id,
+            plugin_run_id=plugin_run.id,
+            supporting_data=complex_supporting,
+            explanation="Test with special chars: ' \" \\ ;",
+        )
+    )
+    assert finding_ev.supporting_data == complex_supporting
+    assert "'" in finding_ev.explanation
+
+
+def test_analysis_run_status_transitions(db: Database) -> None:
+    """Test invalid status transitions are handled correctly."""
+    case = CaseRepository(db).create(CaseCreate(case_number="TRANS-001", name="Case"))
+    evidence = EvidenceRepository(db).create(
+        EvidenceCreate(
+            case_id=case.id,
+            original_filename="test.raw",
+            file_path=Path("/tmp/test.raw"),
+            file_size_bytes=1000,
+            sha256="a" * 64,
+        )
+    )
+    
+    repo = AnalysisRunRepository(db)
+    run = repo.create(
+        AnalysisRunCreate(
+            evidence_id=evidence.id,
+            application_version="0.1.0",
+            volatility_version="2.4.1",
+            host_os=HostOS.LINUX,
+        )
+    )
+    
+    # Test that we can mark running from pending
+    running = repo.mark_running(run.id)
+    assert running.status == AnalysisRunStatus.RUNNING
+    
+    # Test that we can mark completed from running
+    completed = repo.mark_completed(running.id)
+    assert completed.status == AnalysisRunStatus.COMPLETED
+    
+    # Test that we can mark failed from pending
+    run2 = repo.create(
+        AnalysisRunCreate(
+            evidence_id=evidence.id,
+            application_version="0.1.0",
+            volatility_version="2.4.1",
+            host_os=HostOS.LINUX,
+        )
+    )
+    failed = repo.mark_failed(run2.id, "Test error")
+    assert failed.status == AnalysisRunStatus.FAILED
+
+
+def test_plugin_run_with_optional_output_fields(db: Database) -> None:
+    """Test plugin run creation and updates with optional output fields."""
+    case = CaseRepository(db).create(CaseCreate(case_number="OPT-001", name="Case"))
+    evidence = EvidenceRepository(db).create(
+        EvidenceCreate(
+            case_id=case.id,
+            original_filename="test.raw",
+            file_path=Path("/tmp/test.raw"),
+            file_size_bytes=1000,
+            sha256="a" * 64,
+        )
+    )
+    analysis_run = AnalysisRunRepository(db).create(
+        AnalysisRunCreate(
+            evidence_id=evidence.id,
+            application_version="0.1.0",
+            volatility_version="2.4.1",
+            host_os=HostOS.LINUX,
+        )
+    )
+    
+    repo = PluginRunRepository(db)
+    
+    # Create with None output fields
+    plugin_run = repo.create(
+        PluginRunCreate(
+            analysis_run_id=analysis_run.id,
+            plugin_name="test.plugin",
+            configuration={},
+        )
+    )
+    assert plugin_run.raw_output_path is None
+    assert plugin_run.raw_output_sha256 is None
+    
+    # Mark failed without output path
+    failed = repo.mark_failed(plugin_run.id, "Test failure")
+    assert failed.raw_output_path is None
+    assert failed.raw_output_sha256 is None
+    
+    # Mark failed with output path
+    plugin_run2 = repo.create(
+        PluginRunCreate(
+            analysis_run_id=analysis_run.id,
+            plugin_name="test.plugin",
+            configuration={},
+        )
+    )
+    failed_with_output = repo.mark_failed(
+        plugin_run2.id,
+        "Test failure with output",
+        Path("/tmp/output.json"),
+        "b" * 64,
+    )
+    assert failed_with_output.raw_output_path == Path("/tmp/output.json")
+    assert failed_with_output.raw_output_sha256 == "b" * 64

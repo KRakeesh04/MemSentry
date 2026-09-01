@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -78,14 +79,24 @@ class MigrationManager:
 
     @staticmethod
     def _discover_migrations() -> list[Path]:
-        """Return migration SQL files in filename order."""
+        """Return migration SQL files matching the naming convention, sorted by version."""
 
         if not SCHEMA_DIRECTORY.exists():
             raise MigrationError(
                 f"Schema directory does not exist: {SCHEMA_DIRECTORY}"
             )
 
-        return sorted(SCHEMA_DIRECTORY.glob("*.sql"))
+        migration_pattern = re.compile(r"^(\d+)_[^.]+\.sql$")
+        migrations = []
+
+        for path in SCHEMA_DIRECTORY.glob("*.sql"):
+            if migration_pattern.match(path.name):
+                migrations.append(path)
+
+        if not migrations:
+            return []
+
+        return sorted(migrations, key=lambda p: MigrationManager._get_migration_version(p))
 
     @staticmethod
     def _get_migration_version(

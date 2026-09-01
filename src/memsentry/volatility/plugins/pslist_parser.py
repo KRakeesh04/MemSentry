@@ -275,3 +275,17 @@ def _first_value(values: Mapping[str, Any], names: tuple[str, ...]) -> Any | Non
     return None
 
 
+def _to_int(value: Any) -> int | None:
+    """Convert Volatility's numeric JSON value without accepting booleans."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        try:
+            return int(value.strip(), 0)
+        except ValueError:
+            return None
+    return None
+
+

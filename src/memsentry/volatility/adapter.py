@@ -23,12 +23,8 @@ from volatility3.framework import (
 from volatility3.framework.automagic import stacker
 from volatility3.framework.configuration import requirements
 
-from memsentry.volatility.os_utils import (
-    UnsupportedOperatingSystemError,
-)
-from memsentry.volatility.os_utils import (
-    normalise_os as _normalise_os_name,
-)
+from memsentry.volatility.os_utils import UnsupportedOperatingSystemError
+from memsentry.volatility.os_utils import normalise_os as _normalise_os_name
 from memsentry.volatility.symbol_manager import SymbolManager
 
 logger = logging.getLogger(__name__)

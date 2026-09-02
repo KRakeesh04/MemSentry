@@ -1,8 +1,7 @@
 """Database infrastructure for MemSentry."""
 
-from memsentry.storage.database import Database, create_case_database
+from memsentry.storage.database import Database
 
 __all__ = [
     "Database",
-    "create_case_database",
 ]

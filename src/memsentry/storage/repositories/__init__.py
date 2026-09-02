@@ -1,27 +1,55 @@
 """Repository classes for persistent MemSentry data."""
 
-from memsentry.storage.repositories.analysis_repository import AnalysisRepository
-from memsentry.storage.repositories.artifact_repository import ArtifactRepository
-from memsentry.storage.repositories.audit_repository import AuditRepository
-from memsentry.storage.repositories.case_repository import CaseRepository
-from memsentry.storage.repositories.evidence_repository import EvidenceRepository
-from memsentry.storage.repositories.finding_repository import FindingRepository
-from memsentry.storage.repositories.note_repository import NoteRepository
-from memsentry.storage.repositories.plugin_repository import PluginRepository
-from memsentry.storage.repositories.relationship_repository import (
-    RelationshipRepository,
+from memsentry.storage.repositories.analysis_run_repository import (
+    AnalysisRunNotFoundError,
+    AnalysisRunRepository,
+    AnalysisRunRepositoryError,
 )
-from memsentry.storage.repositories.report_repository import ReportRepository
+from memsentry.storage.repositories.case_repository import (
+    CaseNotFoundError,
+    CaseRepository,
+    CaseRepositoryError,
+    DuplicateCaseNumberError,
+)
+from memsentry.storage.repositories.evidence_repository import (
+    EvidenceNotFoundError,
+    EvidenceRepository,
+    EvidenceRepositoryError,
+)
+from memsentry.storage.repositories.finding_evidence_repository import (
+    FindingEvidenceNotFoundError,
+    FindingEvidenceRepository,
+    FindingEvidenceRepositoryError,
+)
+from memsentry.storage.repositories.finding_repository import (
+    FindingNotFoundError,
+    FindingRepository,
+    FindingRepositoryError,
+)
+from memsentry.storage.repositories.plugin_run_repository import (
+    PluginRunNotFoundError,
+    PluginRunRepository,
+    PluginRunRepositoryError,
+)
 
 __all__ = [
-    "AnalysisRepository",
-    "ArtifactRepository",
-    "AuditRepository",
+    "AnalysisRunNotFoundError",
+    "AnalysisRunRepository",
+    "AnalysisRunRepositoryError",
+    "CaseNotFoundError",
     "CaseRepository",
+    "CaseRepositoryError",
+    "DuplicateCaseNumberError",
+    "EvidenceNotFoundError",
     "EvidenceRepository",
+    "EvidenceRepositoryError",
+    "FindingEvidenceNotFoundError",
+    "FindingEvidenceRepository",
+    "FindingEvidenceRepositoryError",
+    "FindingNotFoundError",
     "FindingRepository",
-    "NoteRepository",
-    "PluginRepository",
-    "RelationshipRepository",
-    "ReportRepository",
+    "FindingRepositoryError",
+    "PluginRunNotFoundError",
+    "PluginRunRepository",
+    "PluginRunRepositoryError",
 ]

@@ -1,288 +1,254 @@
 from __future__ import annotations
 
 import sqlite3
-from uuid import uuid4
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import UUID, uuid4
 
+from memsentry.models.evidence import (
+    Evidence,
+    EvidenceCreate,
+    EvidenceOS,
+    IntegrityStatus,
+)
 from memsentry.storage.database import Database
-from memsentry.storage.repositories.case_repository import utc_now
+
+
+class EvidenceRepositoryError(RuntimeError):
+    """Raised when an evidence database operation fails."""
+
+
+class EvidenceNotFoundError(EvidenceRepositoryError):
+    """Raised when requested evidence record is not found."""
 
 
 class EvidenceRepository:
-    """Store evidence metadata, hashes, and custody history."""
+    """Store and retrieve evidence records."""
 
     def __init__(self, database: Database) -> None:
         self.database = database
 
-    def add_evidence(
-        self,
-        *,
-        case_id: str,
-        original_filename: str,
-        evidence_path: str,
-        file_size: int,
-        evidence_type: str = "memory_image",
-        file_format: str | None = None,
-        operating_system: str | None = None,
-        operating_system_version: str | None = None,
-        architecture: str | None = None,
-        acquisition_tool: str | None = None,
-        acquisition_tool_version: str | None = None,
-        acquisition_timestamp: str | None = None,
-        acquisition_notes: str | None = None,
-    ) -> str:
-        """Add an evidence file and return its UUID."""
-        evidence_id = str(uuid4())
+    def create(self, evidence_data: EvidenceCreate) -> Evidence:
+        """Register a new evidence record."""
 
-        self.database.execute(
-            """
-            INSERT INTO evidence_files (
-                id,
-                case_id,
-                original_filename,
-                evidence_path,
-                evidence_type,
-                file_format,
-                file_size,
-                operating_system,
-                operating_system_version,
-                architecture,
-                acquisition_tool,
-                acquisition_tool_version,
-                acquisition_timestamp,
-                acquisition_notes,
-                is_read_only,
-                added_at
+        evidence_id = uuid4()
+        now = datetime.now(UTC)
+        os_val = (
+            evidence_data.evidence_os.value
+            if evidence_data.evidence_os is not None
+            else None
+        )
+
+        try:
+            with self.database.transaction() as connection:
+                connection.execute(
+                    """
+                    INSERT INTO evidence (
+                        id,
+                        case_id,
+                        original_filename,
+                        file_path,
+                        file_size_bytes,
+                        sha256,
+                        evidence_os,
+                        integrity_status,
+                        registered_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        str(evidence_id),
+                        str(evidence_data.case_id),
+                        evidence_data.original_filename,
+                        str(evidence_data.file_path),
+                        evidence_data.file_size_bytes,
+                        evidence_data.sha256,
+                        os_val,
+                        IntegrityStatus.VERIFIED.value,
+                        now.isoformat(),
+                    ),
+                )
+
+                row = connection.execute(
+                    """
+                    SELECT
+                        id,
+                        case_id,
+                        original_filename,
+                        file_path,
+                        file_size_bytes,
+                        sha256,
+                        evidence_os,
+                        integrity_status,
+                        registered_at
+                    FROM evidence
+                    WHERE id = ?
+                    """,
+                    (str(evidence_id),),
+                ).fetchone()
+
+        except sqlite3.Error as exc:
+            raise EvidenceRepositoryError(
+                "Could not register evidence."
+            ) from exc
+
+        if row is None:
+            raise EvidenceRepositoryError(
+                "Evidence was inserted but could not be retrieved."
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                evidence_id,
-                case_id,
-                original_filename,
-                evidence_path,
-                evidence_type,
-                file_format,
-                file_size,
-                operating_system,
-                operating_system_version,
-                architecture,
-                acquisition_tool,
-                acquisition_tool_version,
-                acquisition_timestamp,
-                acquisition_notes,
-                1,
-                utc_now(),
-            ),
-        )
 
-        return evidence_id
+        return self._row_to_evidence(row)
 
-    def get_evidence(self, evidence_id: str) -> sqlite3.Row | None:
-        """Return one evidence record."""
-        return self.database.fetch_one(
-            "SELECT * FROM evidence_files WHERE id = ?",
-            (evidence_id,),
-        )
+    def get_by_id(self, evidence_id: UUID) -> Evidence | None:
+        """Return evidence by its ID, or None if it does not exist."""
 
-    def list_evidence_for_case(self, case_id: str) -> list[sqlite3.Row]:
-        """Return all evidence files associated with a case."""
-        return self.database.fetch_all(
-            """
-            SELECT *
-            FROM evidence_files
-            WHERE case_id = ?
-            ORDER BY added_at
-            """,
-            (case_id,),
-        )
+        with self.database.connection() as connection:
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    case_id,
+                    original_filename,
+                    file_path,
+                    file_size_bytes,
+                    sha256,
+                    evidence_os,
+                    integrity_status,
+                    registered_at
+                FROM evidence
+                WHERE id = ?
+                """,
+                (str(evidence_id),),
+            ).fetchone()
 
-    def update_evidence_path(
-        self,
-        evidence_id: str,
-        evidence_path: str,
-    ) -> bool:
-        """Update the recorded path if evidence has been relocated."""
-        affected = self.database.execute(
-            """
-            UPDATE evidence_files
-            SET evidence_path = ?
-            WHERE id = ?
-            """,
-            (evidence_path, evidence_id),
-        )
-
-        return affected > 0
-
-    def record_hash(
-        self,
-        *,
-        evidence_id: str,
-        hash_value: str,
-        hash_stage: str,
-        file_size: int,
-        algorithm: str = "SHA-256",
-        analysis_run_id: str | None = None,
-        duration_seconds: float | None = None,
-        verified: bool | None = None,
-    ) -> str:
-        """Store an evidence hash calculation."""
-        hash_id = str(uuid4())
-
-        self.database.execute(
-            """
-            INSERT INTO evidence_hashes (
-                id,
-                evidence_id,
-                analysis_run_id,
-                algorithm,
-                hash_value,
-                hash_stage,
-                file_size,
-                duration_seconds,
-                calculated_at,
-                verified
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                hash_id,
-                evidence_id,
-                analysis_run_id,
-                algorithm,
-                hash_value,
-                hash_stage,
-                file_size,
-                duration_seconds,
-                utc_now(),
-                None if verified is None else int(verified),
-            ),
-        )
-
-        return hash_id
-
-    def get_latest_hash(
-        self,
-        evidence_id: str,
-        hash_stage: str,
-    ) -> sqlite3.Row | None:
-        """Return the latest hash for a specified stage."""
-        return self.database.fetch_one(
-            """
-            SELECT *
-            FROM evidence_hashes
-            WHERE evidence_id = ?
-              AND hash_stage = ?
-            ORDER BY calculated_at DESC
-            LIMIT 1
-            """,
-            (evidence_id, hash_stage),
-        )
-
-    def list_hashes(self, evidence_id: str) -> list[sqlite3.Row]:
-        """Return all hash records for evidence."""
-        return self.database.fetch_all(
-            """
-            SELECT *
-            FROM evidence_hashes
-            WHERE evidence_id = ?
-            ORDER BY calculated_at
-            """,
-            (evidence_id,),
-        )
-
-    def verify_pre_post_hash(
-        self,
-        evidence_id: str,
-        analysis_run_id: str,
-    ) -> bool | None:
-        """
-        Compare the latest pre-analysis and post-analysis hashes.
-
-        Returns None if either hash is unavailable.
-        """
-        pre_hash = self.database.fetch_one(
-            """
-            SELECT hash_value
-            FROM evidence_hashes
-            WHERE evidence_id = ?
-              AND analysis_run_id = ?
-              AND hash_stage = 'pre_analysis'
-            ORDER BY calculated_at DESC
-            LIMIT 1
-            """,
-            (evidence_id, analysis_run_id),
-        )
-
-        post_hash = self.database.fetch_one(
-            """
-            SELECT hash_value
-            FROM evidence_hashes
-            WHERE evidence_id = ?
-              AND analysis_run_id = ?
-              AND hash_stage = 'post_analysis'
-            ORDER BY calculated_at DESC
-            LIMIT 1
-            """,
-            (evidence_id, analysis_run_id),
-        )
-
-        if pre_hash is None or post_hash is None:
+        if row is None:
             return None
 
-        return str(pre_hash["hash_value"]).lower() == str(
-            post_hash["hash_value"]
-        ).lower()
+        return self._row_to_evidence(row)
 
-    def add_custody_event(
+    def list_by_case(self, case_id: UUID) -> list[Evidence]:
+        """Return all evidence records associated with a case."""
+
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """
+                SELECT
+                    id,
+                    case_id,
+                    original_filename,
+                    file_path,
+                    file_size_bytes,
+                    sha256,
+                    evidence_os,
+                    integrity_status,
+                    registered_at
+                FROM evidence
+                WHERE case_id = ?
+                ORDER BY registered_at ASC
+                """,
+                (str(case_id),),
+            ).fetchall()
+
+        return [self._row_to_evidence(row) for row in rows]
+
+    def set_evidence_os(
         self,
-        *,
-        case_id: str,
-        event_type: str,
-        actor: str,
-        description: str,
-        evidence_id: str | None = None,
-        location: str | None = None,
-        event_timestamp: str | None = None,
-    ) -> str:
-        """Add a chain-of-custody event."""
-        event_id = str(uuid4())
+        evidence_id: UUID,
+        evidence_os: EvidenceOS,
+    ) -> Evidence:
+        """Update the detected evidence target operating system."""
 
-        self.database.execute(
-            """
-            INSERT INTO custody_events (
-                id,
-                case_id,
-                evidence_id,
-                event_type,
-                actor,
-                description,
-                location,
-                event_timestamp
+        with self.database.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE evidence
+                SET evidence_os = ?
+                WHERE id = ?
+                """,
+                (evidence_os.value, str(evidence_id)),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event_id,
-                case_id,
-                evidence_id,
-                event_type,
-                actor,
-                description,
-                location,
-                event_timestamp or utc_now(),
-            ),
-        )
 
-        return event_id
+            if cursor.rowcount == 0:
+                raise EvidenceNotFoundError(f"Evidence not found: {evidence_id}")
 
-    def list_custody_events(self, case_id: str) -> list[sqlite3.Row]:
-        """Return custody events in chronological order."""
-        return self.database.fetch_all(
-            """
-            SELECT *
-            FROM custody_events
-            WHERE case_id = ?
-            ORDER BY event_timestamp
-            """,
-            (case_id,),
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    case_id,
+                    original_filename,
+                    file_path,
+                    file_size_bytes,
+                    sha256,
+                    evidence_os,
+                    integrity_status,
+                    registered_at
+                FROM evidence
+                WHERE id = ?
+                """,
+                (str(evidence_id),),
+            ).fetchone()
+
+        if row is None:
+            raise EvidenceNotFoundError(f"Evidence not found: {evidence_id}")
+
+        return self._row_to_evidence(row)
+
+    def update_integrity_status(
+        self,
+        evidence_id: UUID,
+        status: IntegrityStatus,
+    ) -> Evidence:
+        """Update the integrity status of evidence."""
+
+        with self.database.transaction() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE evidence
+                SET integrity_status = ?
+                WHERE id = ?
+                """,
+                (status.value, str(evidence_id)),
+            )
+
+            if cursor.rowcount == 0:
+                raise EvidenceNotFoundError(f"Evidence not found: {evidence_id}")
+
+            row = connection.execute(
+                """
+                SELECT
+                    id,
+                    case_id,
+                    original_filename,
+                    file_path,
+                    file_size_bytes,
+                    sha256,
+                    evidence_os,
+                    integrity_status,
+                    registered_at
+                FROM evidence
+                WHERE id = ?
+                """,
+                (str(evidence_id),),
+            ).fetchone()
+
+        if row is None:
+            raise EvidenceNotFoundError(f"Evidence not found: {evidence_id}")
+
+        return self._row_to_evidence(row)
+
+    @staticmethod
+    def _row_to_evidence(row: sqlite3.Row) -> Evidence:
+        """Convert a SQLite row into an Evidence model."""
+
+        return Evidence(
+            id=row["id"],
+            case_id=row["case_id"],
+            original_filename=row["original_filename"],
+            file_path=Path(row["file_path"]),
+            file_size_bytes=row["file_size_bytes"],
+            sha256=row["sha256"],
+            evidence_os=row["evidence_os"],
+            integrity_status=row["integrity_status"],
+            registered_at=row["registered_at"],
         )

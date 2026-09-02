@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-SUPPORTED_OPERATING_SYSTEMS = frozenset({"windows", "linux", "mac"})
+from memsentry.volatility.os_utils import normalise_os
 
 
 class SymbolManager:
@@ -19,7 +19,7 @@ class SymbolManager:
 
     def get_symbol_path(self, os_name: str) -> Path:
         """Return the directory containing symbols for an OS."""
-        return self.symbol_dir / self._normalise_os(os_name)
+        return self.symbol_dir / normalise_os(os_name)
 
     def symbols_available(self, os_name: str) -> bool:
         """Check whether symbols for the requested OS exist."""
@@ -62,13 +62,3 @@ class SymbolManager:
             "linux": self.symbols_available("linux"),
             "mac": self.symbols_available("mac"),
         }
-
-    @staticmethod
-    def _normalise_os(os_name: str) -> str:
-        normalised = str(os_name).strip().lower()
-        if normalised not in SUPPORTED_OPERATING_SYSTEMS:
-            raise ValueError(
-                f"Unsupported operating system '{os_name}'. "
-                f"Supported values: {', '.join(sorted(SUPPORTED_OPERATING_SYSTEMS))}."
-            )
-        return normalised

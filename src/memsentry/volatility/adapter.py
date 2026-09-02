@@ -23,11 +23,15 @@ from volatility3.framework import (
 from volatility3.framework.automagic import stacker
 from volatility3.framework.configuration import requirements
 
+from memsentry.volatility.os_utils import (
+    UnsupportedOperatingSystemError,
+)
+from memsentry.volatility.os_utils import (
+    normalise_os as _normalise_os_name,
+)
 from memsentry.volatility.symbol_manager import SymbolManager
 
 logger = logging.getLogger(__name__)
-
-SUPPORTED_OPERATING_SYSTEMS = frozenset({"windows", "linux", "mac"})
 
 
 class VolatilityAdapterError(RuntimeError):
@@ -271,13 +275,7 @@ class VolatilityAdapter:
 
     @classmethod
     def _normalise_os(cls, os_type: str) -> str:
-        if not isinstance(os_type, str):
-            raise VolatilityUnsupportedOSError("Operating system must be a string.")
-        normalised = os_type.strip().lower()
-        if normalised not in SUPPORTED_OPERATING_SYSTEMS:
-            supported = ", ".join(sorted(SUPPORTED_OPERATING_SYSTEMS))
-            raise VolatilityUnsupportedOSError(
-                f"Unsupported operating system '{os_type}'. "
-                f"Supported values: {supported}."
-            )
-        return normalised
+        try:
+            return _normalise_os_name(os_type)
+        except UnsupportedOperatingSystemError as error:
+            raise VolatilityUnsupportedOSError(str(error)) from error

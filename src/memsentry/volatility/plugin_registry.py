@@ -11,10 +11,8 @@ from typing import Any, cast
 
 from volatility3 import framework, plugins
 
-MAC_OS = "mac"
-LINUX_OS = "linux"
-WINDOWS_OS = "windows"
-SUPPORTED_OPERATING_SYSTEMS = frozenset({WINDOWS_OS, LINUX_OS, MAC_OS})
+from memsentry.volatility import os_utils
+from memsentry.volatility.os_utils import SUPPORTED_OPERATING_SYSTEMS
 
 _DEFAULT_REGISTRY_FILE = (
     Path(__file__).resolve().parents[3] / "resources" / "plugin_registry.json"
@@ -236,15 +234,10 @@ class PluginRegistry:
 
 
 def _normalise_os(os_type: str) -> str:
-    if not isinstance(os_type, str):
-        raise UnsupportedOperatingSystemError("Operating system must be a string.")
-    normalised_os = os_type.strip().lower()
-    if normalised_os not in SUPPORTED_OPERATING_SYSTEMS:
-        supported = ", ".join(sorted(SUPPORTED_OPERATING_SYSTEMS))
-        raise UnsupportedOperatingSystemError(
-            f"Unsupported operating system '{os_type}'. Supported values: {supported}."
-        )
-    return normalised_os
+    try:
+        return os_utils.normalise_os(os_type)
+    except os_utils.UnsupportedOperatingSystemError as error:
+        raise UnsupportedOperatingSystemError(str(error)) from error
 
 
 def _parse_plugin_metadata(value: Any) -> PluginDefinition:

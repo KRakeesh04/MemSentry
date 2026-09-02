@@ -1,21 +1,24 @@
-"""Normalise JSON output from Volatility's operating-system-specific pslist plugins.
-
-The parser deliberately has no database dependency. It produces process artifacts
-that an orchestration layer can persist through ``ArtifactRepository``, while
-retaining each source row and its location for forensic provenance.
-"""
+"""Normalise JSON output from Volatility's operating-system-specific pslist plugins."""
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from memsentry.volatility.plugins._parser_utils import (
+    VolatilityPluginParseError,
+    decode_rows,
+    normalise_os,
+    normalise_values,
+    optional_bool,
+    optional_int,
+    optional_text,
+    walk_rows,
+)
 
-class PsListParseError(ValueError):
-    """Raised when pslist output cannot be decoded as Volatility JSON."""
+PsListParseError = VolatilityPluginParseError
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,7 +79,7 @@ class PsListParser:
         skipped and recorded in ``warnings`` for the plugin run audit record.
         """
         normalised_os = self._normalise_os(os_type)
-        rows = self._decode_rows(raw_output)
+        rows = decode_rows(raw_output, "pslist")
         parser = {
             "windows": self.windows_parser,
             "linux": self.linux_parser,
@@ -85,7 +88,7 @@ class PsListParser:
 
         processes: list[ProcessArtifact] = []
         warnings: list[str] = []
-        for row_number, depth, row in self._walk_rows(rows):
+        for row_number, depth, row in walk_rows(rows):
             try:
                 processes.append(parser(row, row_number=row_number, depth=depth))
             except PsListParseError as error:
@@ -113,7 +116,7 @@ class PsListParser:
     def _build_process(
         self, row: Mapping[str, Any], *, row_number: int, depth: int, os_type: str
     ) -> ProcessArtifact:
-        values = {_normalise_column(column): value for column, value in row.items()}
+        values = normalise_values(row)
         pid = self._required_int(values, ("pid",), row_number, "PID")
         process_name = self._required_text(
             values, ("imagefilename", "comm", "name"), row_number, "process name"
@@ -139,63 +142,14 @@ class PsListParser:
         )
 
     @staticmethod
-    def _decode_rows(
-        raw_output: str | bytes | Path | Sequence[Any] | Mapping[str, Any],
-    ) -> Sequence[Any]:
-        if isinstance(raw_output, Path):
-            try:
-                raw_output = raw_output.read_text(encoding="utf-8")
-            except OSError as error:
-                raise PsListParseError(f"Unable to read pslist output: {error}") from error
-
-        if isinstance(raw_output, bytes):
-            try:
-                raw_output = raw_output.decode("utf-8")
-            except UnicodeDecodeError as error:
-                raise PsListParseError("pslist output is not UTF-8 JSON.") from error
-        if isinstance(raw_output, str):
-            raw_output = _decode_json_document(raw_output)
-
-        if isinstance(raw_output, Mapping):
-            raw_output = raw_output.get("rows", raw_output.get("results", raw_output))
-        if not isinstance(raw_output, Sequence) or isinstance(raw_output, (str, bytes)):
-            raise PsListParseError("pslist JSON must contain a list of result rows.")
-        return raw_output
-
-    @staticmethod
-    def _walk_rows(rows: Sequence[Any]) -> Sequence[tuple[int, int, Mapping[str, Any]]]:
-        result: list[tuple[int, int, Mapping[str, Any]]] = []
-
-        def visit(items: Sequence[Any], depth: int) -> None:
-            for item in items:
-                row_number = len(result) + 1
-                if not isinstance(item, Mapping):
-                    result.append((row_number, depth, {}))
-                    continue
-                row = dict(item)
-                children = row.pop("__children", [])
-                result.append((row_number, depth, row))
-                if isinstance(children, Sequence) and not isinstance(children, (str, bytes)):
-                    visit(children, depth + 1)
-
-        visit(rows, 0)
-        return result
-
-    @staticmethod
     def _normalise_os(os_type: str) -> str:
-        normalised_os = os_type.strip().lower() if isinstance(os_type, str) else ""
-        if normalised_os not in PsListParser._SUPPORTED_OS:
-            supported = ", ".join(sorted(PsListParser._SUPPORTED_OS))
-            raise PsListParseError(
-                f"Unsupported operating system '{os_type}'. Supported values: {supported}."
-            )
-        return normalised_os
+        return normalise_os(os_type, PsListParser._SUPPORTED_OS)
 
     @staticmethod
     def _required_int(
         values: Mapping[str, Any], names: tuple[str, ...], row_number: int, label: str
     ) -> int:
-        parsed = _to_int(_first_value(values, names))
+        parsed = optional_int(values, names)
         if parsed is None or parsed < 0:
             raise PsListParseError(f"pslist row {row_number} has no valid {label}; row skipped.")
         return parsed
@@ -204,10 +158,12 @@ class PsListParser:
     def _optional_int(
         values: Mapping[str, Any], names: tuple[str, ...], row_number: int, label: str
     ) -> int | None:
-        value = _first_value(values, names)
+        value = next(
+            (values[name] for name in names if name in values and values[name] is not None), None
+        )
         if value is None:
             return None
-        parsed = _to_int(value)
+        parsed = optional_int({"value": value}, ("value",))
         if parsed is None or parsed < 0:
             raise PsListParseError(f"pslist row {row_number} has invalid {label}; row skipped.")
         return parsed
@@ -216,76 +172,20 @@ class PsListParser:
     def _required_text(
         values: Mapping[str, Any], names: tuple[str, ...], row_number: int, label: str
     ) -> str:
-        value = PsListParser._optional_text(values, names)
+        value = optional_text(values, names)
         if value is None:
             raise PsListParseError(f"pslist row {row_number} has no valid {label}; row skipped.")
         return value
 
     @staticmethod
     def _optional_text(values: Mapping[str, Any], names: tuple[str, ...]) -> str | None:
-        value = _first_value(values, names)
-        if value is None:
-            return None
-        text = str(value).strip()
-        return text or None
+        return optional_text(values, names)
 
     @staticmethod
     def _optional_bool(
         values: Mapping[str, Any], names: tuple[str, ...], row_number: int, label: str
     ) -> bool | None:
-        value = _first_value(values, names)
-        if value is None:
-            return None
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, int) and value in (0, 1):
-            return bool(value)
-        if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
-            return value.strip().lower() == "true"
-        raise PsListParseError(f"pslist row {row_number} has invalid {label}; row skipped.")
-
-
-def _decode_json_document(raw_output: str) -> Any:
-    text = raw_output.strip()
-    if not text:
-        raise PsListParseError("pslist output is empty.")
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError:
-        rows: list[Any] = []
-        try:
-            for line in text.splitlines():
-                if line.strip():
-                    rows.append(json.loads(line))
-        except json.JSONDecodeError as error:
-            raise PsListParseError("pslist output is not valid JSON or JSON Lines.") from error
-        if not rows:
-            raise PsListParseError("pslist output is empty.")
-        return rows
-
-
-def _normalise_column(column: object) -> str:
-    return "".join(character for character in str(column).lower() if character.isalnum())
-
-
-def _first_value(values: Mapping[str, Any], names: tuple[str, ...]) -> Any | None:
-    for name in names:
-        if name in values and values[name] is not None:
-            return values[name]
-    return None
-
-
-def _to_int(value: Any) -> int | None:
-    """Convert Volatility's numeric JSON value without accepting booleans."""
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, str):
-        try:
-            return int(value.strip(), 0)
-        except ValueError:
-            return None
-    return None
-
-
+        parsed = optional_bool(values, names)
+        if parsed is None and any(name in values and values[name] is not None for name in names):
+            raise PsListParseError(f"pslist row {row_number} has invalid {label}; row skipped.")
+        return parsed

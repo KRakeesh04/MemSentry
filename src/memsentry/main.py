@@ -1,4 +1,6 @@
+from memsentry.gui.application import create_application
+
+
 def main() -> None:
-    print("MemSentry")
-    print("TODO: Add GUI initialization here")
-    # TODO: Add GUI initialization here
+    app = create_application()
+    app.exec()

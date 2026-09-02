@@ -153,51 +153,12 @@ class PluginRunRepository:
 
     def mark_running(self, plugin_run_id: UUID) -> PluginRun:
         """Mark plugin run as running and set started_at to current UTC time."""
-
         now = datetime.now(UTC)
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE plugin_runs
-                SET
-                    status = ?,
-                    started_at = ?
-                WHERE id = ?
-                """,
-                (
-                    PluginRunStatus.RUNNING.value,
-                    now.isoformat(),
-                    str(plugin_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise PluginRunNotFoundError(f"Plugin run not found: {plugin_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    analysis_run_id,
-                    plugin_name,
-                    status,
-                    configuration_json,
-                    raw_output_path,
-                    raw_output_sha256,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM plugin_runs
-                WHERE id = ?
-                """,
-                (str(plugin_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise PluginRunNotFoundError(f"Plugin run not found: {plugin_run_id}")
-
-        return self._row_to_plugin_run(row)
+        return self._update_status(
+            plugin_run_id,
+            status=PluginRunStatus.RUNNING,
+            started_at=now.isoformat(),
+        )
 
     def mark_completed(
         self,
@@ -206,56 +167,15 @@ class PluginRunRepository:
         raw_output_sha256: str | None,
     ) -> PluginRun:
         """Mark plugin run as completed with output details."""
-
         now = datetime.now(UTC)
         path_str = str(raw_output_path) if raw_output_path is not None else None
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE plugin_runs
-                SET
-                    status = ?,
-                    completed_at = ?,
-                    raw_output_path = ?,
-                    raw_output_sha256 = ?
-                WHERE id = ?
-                """,
-                (
-                    PluginRunStatus.COMPLETED.value,
-                    now.isoformat(),
-                    path_str,
-                    raw_output_sha256,
-                    str(plugin_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise PluginRunNotFoundError(f"Plugin run not found: {plugin_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    analysis_run_id,
-                    plugin_name,
-                    status,
-                    configuration_json,
-                    raw_output_path,
-                    raw_output_sha256,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM plugin_runs
-                WHERE id = ?
-                """,
-                (str(plugin_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise PluginRunNotFoundError(f"Plugin run not found: {plugin_run_id}")
-
-        return self._row_to_plugin_run(row)
+        return self._update_status(
+            plugin_run_id,
+            status=PluginRunStatus.COMPLETED,
+            completed_at=now.isoformat(),
+            raw_output_path=path_str,
+            raw_output_sha256=raw_output_sha256,
+        )
 
     def mark_failed(
         self,
@@ -265,78 +185,70 @@ class PluginRunRepository:
         raw_output_sha256: str | None = None,
     ) -> PluginRun:
         """Mark plugin run as failed with error details."""
-
         now = datetime.now(UTC)
         path_str = str(raw_output_path) if raw_output_path is not None else None
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE plugin_runs
-                SET
-                    status = ?,
-                    completed_at = ?,
-                    error_message = ?,
-                    raw_output_path = ?,
-                    raw_output_sha256 = ?
-                WHERE id = ?
-                """,
-                (
-                    PluginRunStatus.FAILED.value,
-                    now.isoformat(),
-                    error_message,
-                    path_str,
-                    raw_output_sha256,
-                    str(plugin_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise PluginRunNotFoundError(f"Plugin run not found: {plugin_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    analysis_run_id,
-                    plugin_name,
-                    status,
-                    configuration_json,
-                    raw_output_path,
-                    raw_output_sha256,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM plugin_runs
-                WHERE id = ?
-                """,
-                (str(plugin_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise PluginRunNotFoundError(f"Plugin run not found: {plugin_run_id}")
-
-        return self._row_to_plugin_run(row)
+        return self._update_status(
+            plugin_run_id,
+            status=PluginRunStatus.FAILED,
+            completed_at=now.isoformat(),
+            error_message=error_message,
+            raw_output_path=path_str,
+            raw_output_sha256=raw_output_sha256,
+            update_error_message=True,
+        )
 
     def mark_cancelled(self, plugin_run_id: UUID) -> PluginRun:
         """Mark plugin run as cancelled."""
-
         now = datetime.now(UTC)
+        return self._update_status(
+            plugin_run_id,
+            status=PluginRunStatus.CANCELLED,
+            completed_at=now.isoformat(),
+        )
+
+    def _update_status(
+        self,
+        plugin_run_id: UUID,
+        status: PluginRunStatus,
+        *,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        error_message: str | None = None,
+        raw_output_path: str | None = None,
+        raw_output_sha256: str | None = None,
+        update_error_message: bool = False,
+    ) -> PluginRun:
+        """Helper method to update status and execution metadata for a plugin run."""
+        query_parts = ["status = ?"]
+        params: list[str | None] = [status.value]
+
+        if started_at is not None:
+            query_parts.append("started_at = ?")
+            params.append(started_at)
+
+        if completed_at is not None:
+            query_parts.append("completed_at = ?")
+            params.append(completed_at)
+
+        if raw_output_path is not None:
+            query_parts.append("raw_output_path = ?")
+            params.append(raw_output_path)
+
+        if raw_output_sha256 is not None:
+            query_parts.append("raw_output_sha256 = ?")
+            params.append(raw_output_sha256)
+
+        if update_error_message:
+            query_parts.append("error_message = ?")
+            params.append(error_message)
+
+        params.append(str(plugin_run_id))
+        set_clause = ", ".join(query_parts)
 
         with self.database.transaction() as connection:
             cursor = connection.execute(
-                """
-                UPDATE plugin_runs
-                SET
-                    status = ?,
-                    completed_at = ?
-                WHERE id = ?
-                """,
-                (
-                    PluginRunStatus.CANCELLED.value,
-                    now.isoformat(),
-                    str(plugin_run_id),
-                ),
+                f"UPDATE plugin_runs SET {set_clause} WHERE id = ?",
+                params,
             )
 
             if cursor.rowcount == 0:
@@ -373,7 +285,12 @@ class PluginRunRepository:
         raw_path = (
             Path(row["raw_output_path"]) if row["raw_output_path"] is not None else None
         )
-        config = json.loads(row["configuration_json"])
+        try:
+            config = json.loads(row["configuration_json"])
+        except json.JSONDecodeError as exc:
+            raise PluginRunRepositoryError(
+                "Invalid JSON configuration payload in plugin run record."
+            ) from exc
 
         return PluginRun(
             id=row["id"],

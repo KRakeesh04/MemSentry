@@ -70,6 +70,54 @@ def normalise_values(row: Mapping[str, Any]) -> dict[str, Any]:
     return {normalise_column(column): value for column, value in row.items()}
 
 
+def provenance(plugin_name: str, row_number: int, tree_depth: int) -> dict[str, Any]:
+    """Build the common provenance record attached to every artifact."""
+    return {
+        "source_plugin": plugin_name,
+        "source_row": row_number,
+        "source_tree_depth": tree_depth,
+    }
+
+
+def required_pid(
+    values: Mapping[str, Any],
+    pid_names: tuple[str, ...],
+    plugin_name: str,
+    row_number: int,
+    warnings: list[str],
+) -> int | None:
+    """Extract a mandatory PID, recording a warning when it is missing.
+
+    Returns ``None`` (and appends to ``warnings``) when the row has no valid
+    PID, mirroring the behaviour shared by the process-oriented parsers.
+    """
+    pid = optional_int(values, pid_names)
+    if pid is None or pid < 0:
+        warnings.append(f"{plugin_name} row {row_number} has no valid PID; row skipped.")
+        return None
+    return pid
+
+
+def optional_pid(
+    values: Mapping[str, Any],
+    pid_names: tuple[str, ...],
+    plugin_name: str,
+    row_number: int,
+    warnings: list[str],
+) -> int | None:
+    """Extract an optional PID, recording a warning only on malformed input.
+
+    Unlike :func:`required_pid`, a row without any PID value is valid and
+    yields ``None``; a warning is emitted only when a value was present but
+    could not be parsed.
+    """
+    pid = optional_int(values, pid_names)
+    if first_value(values, pid_names) is not None and pid is None:
+        warnings.append(f"{plugin_name} row {row_number} has invalid PID; row skipped.")
+        return None
+    return pid
+
+
 def normalise_column(column: object) -> str:
     return "".join(character for character in str(column).lower() if character.isalnum())
 

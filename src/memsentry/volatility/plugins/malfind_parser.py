@@ -15,6 +15,8 @@ from memsentry.volatility.plugins._parser_utils import (
     optional_bool,
     optional_int,
     optional_text,
+    provenance,
+    required_pid,
     walk_rows,
 )
 
@@ -54,9 +56,8 @@ class MalfindParser:
         warnings = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "malfind")):
             values = normalise_values(row)
-            pid = optional_int(values, ("pid",))
-            if pid is None or pid < 0:
-                warnings.append(f"malfind row {number} has no valid PID; row skipped.")
+            pid = required_pid(values, ("pid",), "malfind", number, warnings)
+            if pid is None:
                 continue
             regions.append(
                 MemoryRegionArtifact(
@@ -71,11 +72,7 @@ class MalfindParser:
                     optional_text(values, ("hexdump", "hex")),
                     optional_text(values, ("disasm", "disassembly")),
                     dict(row),
-                    {
-                        "source_plugin": "windows.malfind.Malfind",
-                        "source_row": number,
-                        "source_tree_depth": depth,
-                    },
+                    provenance("windows.malfind.Malfind", number, depth),
                 )
             )
         return MalfindParseResult(tuple(regions), tuple(warnings))

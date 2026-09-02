@@ -14,6 +14,8 @@ from memsentry.volatility.plugins._parser_utils import (
     normalise_values,
     optional_int,
     optional_text,
+    provenance,
+    required_pid,
     walk_rows,
 )
 
@@ -52,9 +54,8 @@ class PstreeParser:
         warnings: list[str] = []
         for row_number, depth, row in walk_rows(decode_rows(raw_output, "pstree")):
             values = normalise_values(row)
-            pid = optional_int(values, ("pid",))
-            if pid is None or pid < 0:
-                warnings.append(f"pstree row {row_number} has no valid PID; row skipped.")
+            pid = required_pid(values, ("pid",), "pstree", row_number, warnings)
+            if pid is None:
                 continue
             processes.append(
                 ProcessTreeArtifact(
@@ -62,11 +63,7 @@ class PstreeParser:
                     process_name=optional_text(values, ("imagefilename", "comm", "name")),
                     ppid=optional_int(values, ("ppid",)),
                     original_data=dict(row),
-                    provenance={
-                        "source_plugin": self._PLUGIN_NAMES[os_type],
-                        "source_row": row_number,
-                        "source_tree_depth": depth,
-                    },
+                    provenance=provenance(self._PLUGIN_NAMES[os_type], row_number, depth),
                 )
             )
         return PstreeParseResult(tuple(processes), tuple(warnings))

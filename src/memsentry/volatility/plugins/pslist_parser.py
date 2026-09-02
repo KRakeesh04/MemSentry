@@ -15,6 +15,7 @@ from memsentry.volatility.plugins._parser_utils import (
     optional_bool,
     optional_int,
     optional_text,
+    provenance,
     walk_rows,
 )
 
@@ -134,11 +135,7 @@ class PsListParser:
             session_id=self._optional_int(values, ("sessionid",), row_number, "SessionId"),
             wow64=self._optional_bool(values, ("wow64",), row_number, "Wow64"),
             original_data=dict(row),
-            provenance={
-                "source_plugin": f"{os_type}.pslist.PsList",
-                "source_row": row_number,
-                "source_tree_depth": depth,
-            },
+            provenance=provenance(f"{os_type}.pslist.PsList", row_number, depth),
         )
 
     @staticmethod

@@ -12,8 +12,9 @@ from memsentry.volatility.plugins._parser_utils import (
     decode_rows,
     normalise_os,
     normalise_values,
-    optional_int,
     optional_text,
+    provenance,
+    required_pid,
     walk_rows,
 )
 
@@ -48,9 +49,8 @@ class HandlesParser:
         warnings = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "handles")):
             values = normalise_values(row)
-            pid = optional_int(values, ("pid",))
-            if pid is None or pid < 0:
-                warnings.append(f"handles row {number} has no valid PID; row skipped.")
+            pid = required_pid(values, ("pid",), "handles", number, warnings)
+            if pid is None:
                 continue
             handles.append(
                 HandleArtifact(
@@ -60,11 +60,7 @@ class HandlesParser:
                     optional_text(values, ("name", "object")),
                     optional_text(values, ("access", "grantedaccess")),
                     dict(row),
-                    {
-                        "source_plugin": "windows.handles.Handles",
-                        "source_row": number,
-                        "source_tree_depth": depth,
-                    },
+                    provenance("windows.handles.Handles", number, depth),
                 )
             )
         return HandlesParseResult(tuple(handles), tuple(warnings))

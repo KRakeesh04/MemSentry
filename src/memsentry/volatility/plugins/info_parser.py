@@ -13,6 +13,7 @@ from memsentry.volatility.plugins._parser_utils import (
     normalise_os,
     normalise_values,
     optional_text,
+    provenance,
     walk_rows,
 )
 
@@ -54,11 +55,7 @@ class InfoParser:
                 SystemInfoArtifact(
                     values,
                     dict(row),
-                    {
-                        "source_plugin": f"{os_type}.info.Info",
-                        "source_row": number,
-                        "source_tree_depth": depth,
-                    },
+                    provenance(f"{os_type}.info.Info", number, depth),
                 )
             )
         return InfoParseResult(tuple(systems), tuple(warnings))

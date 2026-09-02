@@ -12,8 +12,9 @@ from memsentry.volatility.plugins._parser_utils import (
     decode_rows,
     normalise_os,
     normalise_values,
-    optional_int,
     optional_text,
+    provenance,
+    required_pid,
     walk_rows,
 )
 
@@ -53,9 +54,8 @@ class CmdlineParser:
         warnings: list[str] = []
         for row_number, depth, row in walk_rows(decode_rows(raw_output, "cmdline")):
             values = normalise_values(row)
-            pid = optional_int(values, ("pid",))
-            if pid is None or pid < 0:
-                warnings.append(f"cmdline row {row_number} has no valid PID; row skipped.")
+            pid = required_pid(values, ("pid",), "cmdline", row_number, warnings)
+            if pid is None:
                 continue
             command_lines.append(
                 CommandLineArtifact(
@@ -67,11 +67,7 @@ class CmdlineParser:
                         values, ("args", "commandline", "command", "cmdline")
                     ),
                     original_data=dict(row),
-                    provenance={
-                        "source_plugin": self._PLUGIN_NAMES[os_type],
-                        "source_row": row_number,
-                        "source_tree_depth": depth,
-                    },
+                    provenance=provenance(self._PLUGIN_NAMES[os_type], row_number, depth),
                 )
             )
         return CmdlineParseResult(tuple(command_lines), tuple(warnings))

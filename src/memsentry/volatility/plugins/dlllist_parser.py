@@ -14,7 +14,9 @@ from memsentry.volatility.plugins._parser_utils import (
     normalise_os,
     normalise_values,
     optional_int,
+    optional_pid,
     optional_text,
+    provenance,
     walk_rows,
 )
 
@@ -55,9 +57,8 @@ class DlllistParser:
         warnings = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "dlllist")):
             values = normalise_values(row)
-            pid = optional_int(values, ("pid", "processid"))
+            pid = optional_pid(values, ("pid", "processid"), "dlllist", number, warnings)
             if first_value(values, ("pid", "processid")) is not None and pid is None:
-                warnings.append(f"dlllist row {number} has invalid PID; row skipped.")
                 continue
             modules.append(
                 ModuleArtifact(
@@ -68,11 +69,7 @@ class DlllistParser:
                     optional_int(values, ("size",)),
                     optional_text(values, ("path", "location", "fullname")),
                     dict(row),
-                    {
-                        "source_plugin": self._PLUGIN_NAMES[os_type],
-                        "source_row": number,
-                        "source_tree_depth": depth,
-                    },
+                    provenance(self._PLUGIN_NAMES[os_type], number, depth),
                 )
             )
         return DlllistParseResult(tuple(modules), tuple(warnings))

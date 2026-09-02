@@ -1,0 +1,135 @@
+name: Test, Build, and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest
+
+  version-check:
+    name: Validate release version
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+      should_release: ${{ steps.release.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && pip install build packaging
+      - name: Read and validate release version
+        id: version
+        shell: bash
+        run: |
+          VERSION="$(tr -d '[:space:]' < version.txt)"
+          [[ "$VERSION" =~ ^[0-9]+(\.[0-9]+){2}([a-zA-Z0-9.+-]*)?$ ]] || {
+            echo "version.txt must contain a valid version such as 0.1.0" >&2
+            exit 1
+          }
+          [[ "$GITHUB_REF_NAME" == "v$VERSION" ]] || {
+            echo "The pushed tag ($GITHUB_REF_NAME) must match version.txt (v$VERSION)" >&2
+            exit 1
+          }
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+      - name: Check whether this is a new release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: |
+          LATEST_TAG="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          LATEST_VERSION="${LATEST_TAG#v}"
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SHOULD_RELEASE="$(python - "$VERSION" "$LATEST_VERSION" <<'PY'
+          from packaging.version import Version
+          import sys
+
+          desired, latest = map(Version, sys.argv[1:])
+          if desired < latest:
+              raise SystemExit(f"version.txt ({desired}) is older than the latest release ({latest})")
+          print("true" if desired > latest else "false")
+          PY
+          )"
+          echo "should_release=$SHOULD_RELEASE" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: version-check
+    if: needs.version-check.outputs.should_release == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install build dependencies
+        run: python -m pip install --upgrade pip && python -m pip install build
+      - name: Build distribution
+        run: python -m build
+      - name: Prepare platform release assets
+        shell: python
+        run: |
+          from pathlib import Path
+          from shutil import copy2
+
+          platform = "${{ matrix.os }}"
+          source = Path("dist")
+          target = Path("release-assets")
+          target.mkdir()
+          for package in source.iterdir():
+              copy2(package, target / f"{package.stem}-{platform}{package.suffix}")
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: memsentry-${{ matrix.os }}-${{ needs.version-check.outputs.version }}
+          path: release-assets/
+
+  release:
+    name: Publish release
+    needs: [version-check, build]
+    if: needs.version-check.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Ubuntu and Windows packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: memsentry-*
+          path: release-assets
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.version-check.outputs.version }}
+          name: MemSentry v${{ needs.version-check.outputs.version }}
+          generate_release_notes: true
+          files: release-assets/**/*

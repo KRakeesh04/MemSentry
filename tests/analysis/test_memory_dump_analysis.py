@@ -206,6 +206,8 @@ def _print_db_contents(
         print(artifact.model_dump())
         print('\n')
 
+@pytest.mark.integration
+@pytest.mark.slow
 @pytest.mark.skipif(
     not _default_dump_path().exists(),
     reason="Configured memory dump does not exist; set MEMSENTRY_TEST_DUMP to a real dump file.",

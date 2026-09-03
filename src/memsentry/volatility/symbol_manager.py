@@ -8,7 +8,7 @@ from memsentry.volatility.os_utils import normalise_os
 class SymbolManager:
     """Manages Volatility 3 symbol tables used by MemSentry."""
 
-    def __init__(self, symbol_dir: str | None = None):
+    def __init__(self, symbol_dir: str | None = None) -> None:
         self.symbol_dir = (
             Path(symbol_dir)
             if symbol_dir

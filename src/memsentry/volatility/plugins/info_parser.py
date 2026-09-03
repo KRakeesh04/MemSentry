@@ -44,7 +44,7 @@ class InfoParser:
         warnings: list[str] = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "info")):
             if not row:
-                warnings.append(f"info row {number} is not an object; row skipped.")
+                warnings.append(f"info row {number} is empty or not an object; row skipped.")
                 continue
             values = {
                 key: value

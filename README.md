@@ -466,6 +466,28 @@ Run static type checks:
 mypy src
 ```
 
+### Test: Analyse a Memory Dump and Print DB Stored Data
+
+The integration-style test `tests/analysis/test_memory_dump_analysis.py` runs the
+persistence pipeline (case, evidence, analysis run, plugin run, artifacts) against a
+memory dump using a mocked Volatility adapter (fast and offline — the dump is never
+opened or modified), then prints the stored DB contents to stdout.
+
+Only run it when a memory dump is available:
+
+```bash
+pytest tests/analysis/test_memory_dump_analysis.py -s
+```
+
+It defaults to `tests/memory_dumps/windows/sample-01.mem`. Point it at any other
+dump without editing the test by setting `MEMSENTRY_TEST_DUMP`:
+
+```bash
+MEMSENTRY_TEST_DUMP=/path/to/other.dump pytest tests/analysis/test_memory_dump_analysis.py -s
+```
+
+The test is skipped automatically when the configured dump file does not exist.
+
 
 | Command                                                | Purpose (one line)                                                                                                                 |
 | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |

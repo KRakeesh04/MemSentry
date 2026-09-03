@@ -110,3 +110,8 @@ MemSentry.spec
 
 CORE-FUNCTIONALITY.md
 PROJECT_CONTEXT.md
+
+# mem dump files
+*.mem
+*.dmp
+tests/memory_dumps

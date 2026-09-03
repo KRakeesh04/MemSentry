@@ -160,14 +160,16 @@ def test_run_plugin_persists_no_artifacts_when_parse_yields_none(
 
 
 def test_run_plugin_rejects_unknown_parser(
-    db: Database, tmp_path: Path, analysis_run_id: UUID
+    db: Database, tmp_path: Path, analysis_run_id: UUID, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runner = _make_runner(db, tmp_path)
     evidence = tmp_path / "image.raw"
     evidence.write_bytes(b"dummy")
 
-    monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(runner, "_parser_spec", lambda name: (_ for _ in ()).throw(PluginRunnerError("no parser")))
-
+    monkeypatch.setattr(
+        runner,
+        "_parser_spec",
+        lambda name: (_ for _ in ()).throw(PluginRunnerError("no parser")),
+    )
     with pytest.raises(PluginRunnerError):
         runner.run_plugin(str(evidence), analysis_run_id, "process_list", "linux")

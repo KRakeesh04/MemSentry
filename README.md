@@ -480,10 +480,19 @@ pytest tests/analysis/test_memory_dump_analysis.py -s
 ```
 
 It defaults to `tests/memory_dumps/windows/sample-01.mem`. Point it at any other
-dump without editing the test by setting `MEMSENTRY_TEST_DUMP`:
+Windows, Linux, or macOS dump without editing the test by setting
+`MEMSENTRY_TEST_DUMP`:
 
 ```bash
 MEMSENTRY_TEST_DUMP=/path/to/other.dump pytest tests/analysis/test_memory_dump_analysis.py -s
+```
+
+The target OS for evidence metadata and plugin selection is derived automatically
+from the dump's parent folder name (`windows`, `linux`, or `mac`). If the folder
+name is not recognised, force it explicitly:
+
+```bash
+MEMSENTRY_TEST_DUMP=/path/to/other.dump MEMSENTRY_TEST_OS=linux pytest tests/analysis/test_memory_dump_analysis.py -s
 ```
 
 The test is skipped automatically when the configured dump file does not exist.

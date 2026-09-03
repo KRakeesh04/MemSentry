@@ -75,7 +75,7 @@ markers = [
 
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py311"
 line-length = 100
 src = ["src", "tests"]
 exclude = [
@@ -114,7 +114,7 @@ line-ending = "auto"
 
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.11"
 mypy_path = "src"
 packages = ["memsentry"]
 strict = true

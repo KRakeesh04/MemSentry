@@ -47,7 +47,42 @@ class ArtifactRepository:
         return result
 
     def create_many(self, data: list[ArtifactCreate]) -> list[Artifact]:
-        return [self.create(item) for item in data]
+        if not data:
+            return []
+
+        artifact_ids: list[UUID] = []
+        try:
+            with self.database.transaction() as connection:
+                for item in data:
+                    artifact_id, created_at = uuid4(), datetime.now(UTC)
+                    artifact_ids.append(artifact_id)
+                    connection.execute(
+                        """INSERT INTO artifacts
+                        (id, analysis_run_id, plugin_run_id, artifact_type, pid,
+                        original_data_json, provenance_json, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            str(artifact_id),
+                            str(item.analysis_run_id),
+                            str(item.plugin_run_id),
+                            item.artifact_type,
+                            item.pid,
+                            json.dumps(item.original_data),
+                            json.dumps(item.provenance),
+                            created_at.isoformat(),
+                        ),
+                    )
+        except sqlite3.Error as exc:
+            raise ArtifactRepositoryError("Could not create artifacts.") from exc
+        artifacts: list[Artifact] = []
+        for artifact_id in artifact_ids:
+            artifact = self.get_by_id(artifact_id)
+            if artifact is None:
+                raise ArtifactRepositoryError(
+                    "Artifacts were inserted but could not be retrieved."
+                )
+            artifacts.append(artifact)
+        return artifacts
 
     def get_by_id(self, artifact_id: UUID) -> Artifact | None:
         with self.database.connection() as connection:

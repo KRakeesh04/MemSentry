@@ -9,9 +9,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memsentry.gui.cases_view import CasesView
+from memsentry.storage.repositories.case_repository import CaseRepository
+
 
 class MainWindow(QMainWindow):
-    def __init__(self) -> None:
+    def __init__(self, case_repository: CaseRepository) -> None:
         super().__init__()
 
         self.setWindowTitle("MemSentry")
@@ -40,7 +43,9 @@ class MainWindow(QMainWindow):
         # Pages
         self.pages = QStackedWidget()
 
-        self.pages.addWidget(self.create_page("Cases"))
+        self.cases_view = CasesView(case_repository)
+        self.cases_view.case_opened.connect(self.open_case)
+        self.pages.addWidget(self.cases_view)
         self.pages.addWidget(self.create_page("Evidence"))
         self.pages.addWidget(self.create_page("Analysis"))
         self.pages.addWidget(self.create_page("Dashboard"))
@@ -59,6 +64,11 @@ class MainWindow(QMainWindow):
         # Start with Cases page
         self.navigation.setCurrentRow(0)
 
+    def open_case(self, case: object) -> None:
+        """Keep the opened case available and move to the existing Evidence page."""
+        self.active_case = case
+        self.navigation.setCurrentRow(1)
+
     def create_page(self, title: str) -> QWidget:
         page = QWidget()
         layout = QVBoxLayout(page)
@@ -69,10 +79,10 @@ class MainWindow(QMainWindow):
         return page
 
 
-def create_application() -> QApplication:
+def create_application(case_repository: CaseRepository) -> QApplication:
     app = QApplication([])
 
-    window = MainWindow()
+    window = MainWindow(case_repository)
     window.show()
 
     # Keep a reference to the window

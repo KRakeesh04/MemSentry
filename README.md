@@ -457,7 +457,13 @@ pytest --cov=memsentry --cov-report=term-missing
 Run code-quality checks:
 
 ```bash
-ruff check src tests
+ruff check
+```
+
+Auto-fix lint issues (same idea as running `pytest` — no extra paths needed):
+
+```bash
+ruff check --fix
 ```
 
 Run static type checks:

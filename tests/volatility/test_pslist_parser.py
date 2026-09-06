@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from memsentry.volatility.plugins.pslist_parser import PsListParseError, PsListParser
+from memsentry.volatility.plugins.pslist_parser import PsListParser
 
 
 def test_parses_windows_json_and_preserves_provenance() -> None:

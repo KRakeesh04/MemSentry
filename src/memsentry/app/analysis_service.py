@@ -54,5 +54,5 @@ class AnalysisService:
             )
 
         # TODO: Correlate the artifacts from all plugins and persist the results.
-        
+
         return results

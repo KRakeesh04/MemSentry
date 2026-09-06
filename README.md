@@ -292,6 +292,7 @@ memsentry/
 │       ├── case_management/
 │       ├── evidence/
 │       ├── worker/
+│       ├── acquisition/
 │       ├── volatility/
 │       ├── models/
 │       ├── normalisation/
@@ -687,7 +688,7 @@ The initial version focuses on:
 
 The following are not part of the initial minimum viable product:
 
-* live memory acquisition;
+* live memory acquisition (stretch scaffold under `src/memsentry/acquisition/`; not wired into analysis yet);
 * automatic malware removal;
 * process termination;
 * exploitation or privilege escalation;
@@ -884,6 +885,14 @@ memsentry/
 │       │   ├── cancellation.py
 │       │   └── protocol.py
 │       │
+│       ├── acquisition/
+│       │   ├── dump_manager.py
+│       │   ├── progress.py
+│       │   └── adapters/
+│       │       ├── windowsDumpManager.py
+│       │       ├── linuxDumpManager.py
+│       │       └── macDumpManager.py
+│       │
 │       ├── volatility/
 │       │   ├── __init__.py
 │       │   ├── adapter.py
@@ -1071,6 +1080,7 @@ memsentry/
 | `case_management/` | Handles case creation, metadata and chain-of-custody information. |
 | `evidence/` | Evidence validation, hashing and integrity verification. |
 | `worker/` | Background worker responsible for running analysis without freezing the GUI. |
+| `acquisition/` | Stretch live-memory capture: host OS adapters, progress/ETA, write a raw dump into the case directory, then register it as evidence. Placeholders only; MVP uses an existing dump file. |
 | `volatility/` | Interfaces with Volatility 3 and parses plugin outputs. |
 | `models/` | Pydantic data models representing forensic artifacts. |
 | `normalisation/` | Converts raw plugin outputs into standardized internal objects. |

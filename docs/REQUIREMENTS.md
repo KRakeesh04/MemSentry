@@ -2,7 +2,7 @@
 
 ## 1. Purpose and Scope
 
-MemSentry is a **portable Windows-and-Linux desktop application** for analysing *previously acquired* memory images with Volatility 3. It is a forensic triage and decision-support tool: it correlates selected memory artifacts into explainable, process-level findings and produces reproducible reports. It does not acquire live memory and it does not determine that an artifact is malware or prove attribution, criminal activity, or user intent.
+MemSentry is a **portable Windows-and-Linux desktop application** for analysing *previously acquired* memory images with Volatility 3. It is a forensic triage and decision-support tool: it correlates selected memory artifacts into explainable, process-level findings and produces reproducible reports. It does not acquire live memory in the MVP (a stretch scaffold lives under `src/memsentry/acquisition/`) and it does not determine that an artifact is malware or prove attribution, criminal activity, or user intent.
 
 The MVP implements the proposal scope with an added Linux capability. Supported inputs are Volatility-compatible Windows and Linux images (for example `.raw`, `.mem`, or supported dump formats), case metadata, and optional YARA rules. macOS investigation and nonessential export formats are stretch work only.
 
@@ -119,7 +119,7 @@ Report clarity shall be assessed with a checklist verifying source artifacts, tr
 
 ## 5. Explicitly Out of Scope for the MVP
 
-The following are stretch goals and must not delay the MVP: macOS feasibility work; Linux memory-region/thread equivalence beyond the defined core Linux plugin set; live memory acquisition; generic plugin discovery/cataloguing; arbitrary plugin execution; CSV, PDF, GraphML, or evidence-package export; configurable scoring UI; advanced timeline visualisation; image-to-image comparison; IOC matching; and an installer.
+The following are stretch goals and must not delay the MVP: macOS feasibility work; Linux memory-region/thread equivalence beyond the defined core Linux plugin set; live memory acquisition (package scaffold: `src/memsentry/acquisition/`; must write a raw image into the case directory, hash it, then reuse the existing evidence/analysis path — it must not call Volatility); generic plugin discovery/cataloguing; arbitrary plugin execution; CSV, PDF, GraphML, or evidence-package export; configurable scoring UI; advanced timeline visualisation; image-to-image comparison; IOC matching; and an installer.
 
 ## 6. Traceability Rule
 

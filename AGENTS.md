@@ -36,6 +36,12 @@ Local desktop application for automated memory forensics analysis using Volatili
 - Record important analysis actions for auditability.
 - Keep analysis results reproducible.
 
+## Acquisition
+- Live memory capture is stretch work, not MVP. Scaffold: `src/memsentry/acquisition/`.
+- Keep acquisition separate from `volatility/`. Dump tools write a raw file; Volatility only analyses that file afterwards.
+- Write captured images into the case directory. Hash the file (SHA-256) before analysis. Never modify the captured image.
+- Use a fixed, approved dump tool per OS adapter. Do not run arbitrary user shell commands.
+
 ## Volatility
 - Use Volatility 3 through the project's wrapper/adapter.
 - Do not scatter direct Volatility calls across the codebase.

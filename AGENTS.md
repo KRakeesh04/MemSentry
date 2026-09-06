@@ -62,5 +62,6 @@ Local desktop application for automated memory forensics analysis using Volatili
 - Do not rewrite unrelated code.
 - Preserve backward compatibility where practical.
 
+If context file available in [context.md](./docs/PROJECT_CONTEXT.md) refer that for project context and make the changes accordingly and update the context in that file. Do not create the file if not available.
 
-Refer the [REQUIREMENTS.md](/home/k-rakeshan/Documents/PROJECTS/MemSentry/docs/REQUIREMENTS.md) for the project requirements.
+Refer the [REQUIREMENTS.md](./docs/REQUIREMENTS.md) for the project requirements.

@@ -6,6 +6,7 @@ from memsentry.models.analysis_run import (
     AnalysisRunStatus,
     HostOS,
 )
+from memsentry.models.artifact import Artifact, ArtifactCreate
 from memsentry.models.case import Case, CaseCreate, CaseStatus, CaseUpdate
 from memsentry.models.evidence import (
     Evidence,
@@ -21,6 +22,8 @@ __all__ = [
     "AnalysisRun",
     "AnalysisRunCreate",
     "AnalysisRunStatus",
+    "Artifact",
+    "ArtifactCreate",
     "Case",
     "CaseCreate",
     "CaseStatus",

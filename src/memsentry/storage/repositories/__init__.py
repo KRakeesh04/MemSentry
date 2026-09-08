@@ -5,6 +5,10 @@ from memsentry.storage.repositories.analysis_run_repository import (
     AnalysisRunRepository,
     AnalysisRunRepositoryError,
 )
+from memsentry.storage.repositories.artifact_repository import (
+    ArtifactRepository,
+    ArtifactRepositoryError,
+)
 from memsentry.storage.repositories.case_repository import (
     CaseNotFoundError,
     CaseRepository,
@@ -36,6 +40,8 @@ __all__ = [
     "AnalysisRunNotFoundError",
     "AnalysisRunRepository",
     "AnalysisRunRepositoryError",
+    "ArtifactRepository",
+    "ArtifactRepositoryError",
     "CaseNotFoundError",
     "CaseRepository",
     "CaseRepositoryError",

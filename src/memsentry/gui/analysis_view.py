@@ -4,19 +4,20 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
 from PySide6.QtGui import QDesktopServices, QShowEvent
 from PySide6.QtWidgets import (
-    QAbstractItemView,
     QComboBox,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.analysis.orchestrator import AnalysisOrchestrator
+from memsentry.gui.theme import create_badge_label
 from memsentry.models.analysis_run import (
     AnalysisRun,
     AnalysisRunCreate,
@@ -79,8 +81,137 @@ class AnalysisWorker(QThread):
             self.failed.emit(str(exc))
 
 
+SAMPLE_PLUGIN_DETAILS: dict[str, dict[str, Any]] = {
+    "windows.pstree": {
+        "title": "Process Tree",
+        "identifier": "windows.pstree",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Processes",
+        "description": "Displays process execution hierarchy in a tree structure using parent-child PID links.",
+        "results": 19,
+        "duration": "1.2s",
+    },
+    "windows.pslist": {
+        "title": "Process List",
+        "identifier": "windows.pslist",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Processes",
+        "description": "Lists active processes by walking the doubly-linked ActiveProcessLinks list in Executive Process Blocks (EPROCESS).",
+        "results": 184,
+        "duration": "0.8s",
+    },
+    "windows.psscan": {
+        "title": "Process Scanner",
+        "identifier": "windows.psscan",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Processes",
+        "description": "Scans physical memory pool tags for terminated, unlinked, or hidden EPROCESS structures.",
+        "results": 189,
+        "duration": "4.1s",
+    },
+    "windows.cmdline": {
+        "title": "Command Lines",
+        "identifier": "windows.cmdline",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Processes",
+        "description": "Extracts process command line arguments and environment variables from PEB ProcessParameters.",
+        "results": 47,
+        "duration": "1.4s",
+    },
+    "windows.netstat": {
+        "title": "Network Connections",
+        "identifier": "windows.netstat",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Network",
+        "description": "Scans network socket structures to identify active, listening, or closed TCP/UDP connections.",
+        "results": 23,
+        "duration": "0.6s",
+    },
+    "windows.netscan": {
+        "title": "Network Scanner",
+        "identifier": "windows.netscan",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Network",
+        "description": "Pool scans physical memory for historical network socket and endpoint structures.",
+        "results": 31,
+        "duration": "2.1s",
+    },
+    "windows.dlllist": {
+        "title": "Loaded DLLs",
+        "identifier": "windows.dlllist",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Modules",
+        "description": "Lists loaded dynamic link libraries (DLLs) for each process from PEB InLoadOrderModuleList.",
+        "results": 2847,
+        "duration": "3.4s",
+    },
+    "windows.malfind": {
+        "title": "Malware Finder",
+        "identifier": "windows.malfind",
+        "status": "Completed",
+        "os": "Windows",
+        "category": "Memory Analysis",
+        "description": "Find injected code and RWX memory regions using VAD and PEB metadata",
+        "results": 6,
+        "duration": "18.7s",
+    },
+}
+
+
+class AnalysisPluginCardWidget(QFrame):
+    """Custom card for individual plugins in the Analysis Plugin Center list."""
+
+    clicked = Signal(str)
+
+    def __init__(self, p_id: str, p_title: str, p_res: int, p_dur: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.plugin_id = p_id
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setStyleSheet(
+            "QFrame { background: #0D1322; border: 1px solid #1E293B; border-radius: 6px; } "
+            "QFrame:hover { background: #151D30; border-color: #334155; }"
+        )
+        card_box = QHBoxLayout(self)
+        card_box.setContentsMargins(14, 12, 14, 12)
+
+        dot_lbl = QLabel("●")
+        dot_lbl.setStyleSheet("color: #10B981; font-size: 12px; margin-right: 4px;")
+        card_box.addWidget(dot_lbl)
+
+        info_box = QVBoxLayout()
+        info_box.setSpacing(2)
+
+        t_lbl = QLabel(p_title)
+        t_lbl.setStyleSheet("font-size: 13px; font-weight: 700; color: #F8FAFC;")
+        id_sub = QLabel(p_id)
+        id_sub.setStyleSheet("font-family: monospace; font-size: 11px; color: #64748B;")
+
+        info_box.addWidget(t_lbl)
+        info_box.addWidget(id_sub)
+        card_box.addLayout(info_box)
+
+        card_box.addStretch()
+
+        stats_lbl = QLabel(f"<b>{p_res:,}</b> <span style='color:#64748B;'>results</span> &nbsp; <span style='color:#94A3B8;'>{p_dur}</span>")
+        stats_lbl.setTextFormat(Qt.TextFormat.RichText)
+        stats_lbl.setStyleSheet("font-size: 12px; color: #E2E8F0;")
+        card_box.addWidget(stats_lbl)
+
+    def mousePressEvent(self, event: object) -> None:
+        self.clicked.emit(self.plugin_id)
+
+
 class AnalysisView(QWidget):
     """View widget for configuring plugins, executing analysis runs, and reviewing run status history."""
+
+    open_evidence_explorer_requested = Signal()
 
     def __init__(
         self,
@@ -94,6 +225,7 @@ class AnalysisView(QWidget):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.setObjectName("AnalysisView")
         self.evidence_repository = evidence_repository
         self.analysis_run_repository = analysis_run_repository
         self.plugin_run_repository = plugin_run_repository
@@ -114,149 +246,380 @@ class AnalysisView(QWidget):
         self.update_case_state()
 
     def _build_ui(self) -> None:
-        # Title and Subtitle
-        self.title_label = QLabel("Analysis & Plugin Center")
-        self.title_label.setObjectName("pageTitle")
-        self.subtitle_label = QLabel(
-            "Configure core Volatility plugins and track analysis run progress."
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(16, 12, 16, 12)
+        main_layout.setSpacing(12)
+
+        # 1. Top Sub-Header Bar
+        header_box = QHBoxLayout()
+        header_box.setSpacing(12)
+
+        title_layout = QVBoxLayout()
+        title_layout.setSpacing(2)
+
+        self.subtitle_label = QLabel("ANALYSIS  ·  PLUGIN CENTER")
+        self.subtitle_label.setStyleSheet("font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px;")
+        title_layout.addWidget(self.subtitle_label)
+
+        status_summary_row = QHBoxLayout()
+        status_summary_row.setSpacing(12)
+
+        self.title_label = QLabel("14 completed")
+        self.title_label.setStyleSheet("font-size: 15px; font-weight: 800; color: #10B981;")
+        status_summary_row.addWidget(self.title_label)
+
+        c_run = QLabel("1 running")
+        c_run.setStyleSheet("font-size: 14px; font-weight: 700; color: #38BDF8;")
+        status_summary_row.addWidget(c_run)
+
+        c_que = QLabel("2 queued")
+        c_que.setStyleSheet("font-size: 14px; font-weight: 600; color: #94A3B8;")
+        status_summary_row.addWidget(c_que)
+
+        title_layout.addLayout(status_summary_row)
+        header_box.addLayout(title_layout)
+
+        header_box.addStretch()
+
+        # Evidence Target Selector Combo (Compact)
+        picker_box = QHBoxLayout()
+        picker_lbl = QLabel("Target Image:")
+        picker_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #94A3B8;")
+        picker_box.addWidget(picker_lbl)
+
+        self.evidence_combo = QComboBox()
+        self.evidence_combo.setFixedWidth(240)
+        self.evidence_combo.setStyleSheet(
+            "background: #1E293B; border: 1px solid #334155; color: #F8FAFC; "
+            "padding: 4px 8px; border-radius: 4px; font-size: 12px;"
         )
+        self.evidence_combo.currentIndexChanged.connect(self.on_evidence_changed)
+        picker_box.addWidget(self.evidence_combo)
+        header_box.addLayout(picker_box)
+
+        # Run All Queued Action Button
+        self.run_button = QPushButton("⚡ Run All Queued")
+        self.run_button.setObjectName("primaryButton")
+        self.run_button.setStyleSheet(
+            "background: #1D4ED8; border: 1px solid #2563EB; color: #F8FAFC; "
+            "font-size: 13px; font-weight: 700; padding: 6px 18px; border-radius: 4px;"
+        )
+        self.run_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.run_button.clicked.connect(self.run_analysis)
+        header_box.addWidget(self.run_button)
+
+        main_layout.addLayout(header_box)
+
+        # OS & Category Filter Chips Bar
+        filter_layout = QVBoxLayout()
+        filter_layout.setSpacing(6)
+
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
+
+        # OS Chips
+        os_win_btn = QPushButton("Windows")
+        os_win_btn.setStyleSheet(
+            "background: #1E293B; border: 1px solid #3B82F6; color: #38BDF8; "
+            "font-size: 12px; font-weight: 700; padding: 4px 14px; border-radius: 4px;"
+        )
+        filter_row.addWidget(os_win_btn)
+
+        os_lin_btn = QPushButton("Linux")
+        os_lin_btn.setStyleSheet(
+            "background: #0F172A; border: 1px solid #1E293B; color: #94A3B8; "
+            "font-size: 12px; font-weight: 500; padding: 4px 14px; border-radius: 4px;"
+        )
+        filter_row.addWidget(os_lin_btn)
+
+        sep_lbl = QLabel("|")
+        sep_lbl.setStyleSheet("color: #334155; font-weight: 700;")
+        filter_row.addWidget(sep_lbl)
+
+        categories = [
+            "Processes",
+            "Network",
+            "Modules",
+            "Memory Analysis",
+            "Objects",
+            "Registry",
+            "Services",
+            "Kernel",
+        ]
+        for cat in categories:
+            btn = QPushButton(cat)
+            btn.setStyleSheet(
+                "background: transparent; color: #94A3B8; font-size: 12px; font-weight: 500; padding: 4px 8px;"
+            )
+            filter_row.addWidget(btn)
+
+        filter_row.addStretch()
+        filter_layout.addLayout(filter_row)
+        main_layout.addLayout(filter_layout)
+
+        # Hidden / Compatibility UI Labels & Buttons
+        self.evidence_info_card = QLabel("No evidence selected")
+        self.evidence_info_card.hide()
+        main_layout.addWidget(self.evidence_info_card)
 
         self.state_label = QLabel()
-        self.state_label.setObjectName("stateLabel")
+        self.state_label.setStyleSheet("color: #38BDF8; font-size: 11px; font-weight: 600;")
+        main_layout.addWidget(self.state_label)
 
-        # Evidence Picker Layout
-        evidence_picker_layout = QHBoxLayout()
-        evidence_picker_label = QLabel("Select Evidence:")
-        self.evidence_combo = QComboBox()
-        self.evidence_combo.currentIndexChanged.connect(self.on_evidence_changed)
+        self.plugins_status_label = QLabel()
+        self.plugins_status_label.hide()
 
-        evidence_picker_layout.addWidget(evidence_picker_label)
-        evidence_picker_layout.addWidget(self.evidence_combo, stretch=1)
-
-        # Selected Evidence Information Card
-        self.evidence_info_card = QLabel("No evidence selected")
-        self.evidence_info_card.setWordWrap(True)
-        self.evidence_info_card.setStyleSheet("font-size: 12px; color: #2D3748;")
-
-        # Splitter (Left: Plugin Center, Right: Analysis Runs & Plugin Details)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-
-        # Left Panel: Plugin Selection
-        left_container = QWidget()
-        left_layout = QVBoxLayout(left_container)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-
-        plugins_group = QGroupBox("Core Volatility Plugins")
-        plugins_vbox = QVBoxLayout(plugins_group)
-
-        self.plugins_status_label = QLabel("Select an evidence item to configure plugins.")
-
-        # Select / Deselect All Actions
-        select_actions_layout = QHBoxLayout()
         self.select_all_btn = QPushButton("Select All")
+        self.select_all_btn.hide()
         self.select_all_btn.clicked.connect(self.select_all_plugins)
+
         self.deselect_all_btn = QPushButton("Deselect All")
+        self.deselect_all_btn.hide()
         self.deselect_all_btn.clicked.connect(self.deselect_all_plugins)
 
-        select_actions_layout.addWidget(self.select_all_btn)
-        select_actions_layout.addWidget(self.deselect_all_btn)
-        select_actions_layout.addStretch()
-
         self.plugins_list = QListWidget()
+        self.plugins_list.hide()
 
-        # Run Analysis Action
-        self.run_button = QPushButton("Run Analysis")
-        self.run_button.setEnabled(False)
-        self.run_button.setToolTip(
-            "Stages analysis and executes configured plugins via AnalysisOrchestrator."
+        # 2. Main Center Splitter (Left: Categorized Plugin Cards, Right: Plugin Detail Inspector)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setStyleSheet("QSplitter::handle { background: #1E293B; width: 1px; }")
+
+        # Left Column: Plugin Cards Stream
+        left_widget = QWidget()
+        left_layout = QVBoxLayout(left_widget)
+        left_layout.setContentsMargins(0, 0, 0, 0)
+        left_layout.setSpacing(10)
+
+        scroll_cards = QScrollArea()
+        scroll_cards.setWidgetResizable(True)
+        scroll_cards.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+
+        cards_container = QWidget()
+        self.cards_box = QVBoxLayout(cards_container)
+        self.cards_box.setContentsMargins(0, 0, 8, 0)
+        self.cards_box.setSpacing(12)
+
+        self._populate_figma_plugin_cards()
+
+        scroll_cards.setWidget(cards_container)
+        left_layout.addWidget(scroll_cards)
+        splitter.addWidget(left_widget)
+
+        # Right Column: Plugin Detail Panel
+        right_panel = QFrame()
+        right_panel.setFixedWidth(340)
+        right_panel.setStyleSheet("background: #0D1322; border: 1px solid #1E293B; border-radius: 6px;")
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(18, 18, 18, 18)
+        right_layout.setSpacing(14)
+
+        insp_hdr = QLabel("PLUGIN DETAIL")
+        insp_hdr.setStyleSheet("font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px;")
+        right_layout.addWidget(insp_hdr)
+
+        self.detail_plugin_title = QLabel("Malware Finder")
+        self.detail_plugin_title.setStyleSheet("font-size: 20px; font-weight: 800; color: #F8FAFC;")
+        right_layout.addWidget(self.detail_plugin_title)
+
+        # Badges Row
+        badges_row = QHBoxLayout()
+        badges_row.setSpacing(6)
+
+        self.detail_status_badge = create_badge_label("Completed", "info")
+        self.detail_status_badge.setStyleSheet(
+            "background: #064E3B; color: #34D399; font-size: 11px; font-weight: 700; border-radius: 4px; padding: 3px 8px;"
         )
-        self.run_button.clicked.connect(self.run_analysis)
+        badges_row.addWidget(self.detail_status_badge)
 
-        plugins_vbox.addWidget(self.plugins_status_label)
-        plugins_vbox.addLayout(select_actions_layout)
-        plugins_vbox.addWidget(self.plugins_list)
-        plugins_vbox.addWidget(self.run_button)
+        os_badge = create_badge_label("Windows", "gray")
+        os_badge.setStyleSheet(
+            "background: #1E293B; color: #94A3B8; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 3px 8px;"
+        )
+        badges_row.addWidget(os_badge)
 
-        left_layout.addWidget(plugins_group)
-        splitter.addWidget(left_container)
+        self.detail_cat_badge = create_badge_label("Memory Analysis", "gray")
+        self.detail_cat_badge.setStyleSheet(
+            "background: #1E293B; color: #94A3B8; font-size: 11px; font-weight: 600; border-radius: 4px; padding: 3px 8px;"
+        )
+        badges_row.addWidget(self.detail_cat_badge)
+        badges_row.addStretch()
 
-        # Right Panel: Analysis History & Plugin Runs Details
-        right_container = QWidget()
-        right_layout = QVBoxLayout(right_container)
-        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.addLayout(badges_row)
 
-        # Analysis Runs Table Group
-        runs_group = QGroupBox("Analysis Runs History")
-        runs_vbox = QVBoxLayout(runs_group)
+        # Plugin Identifier Box
+        id_frame = QFrame()
+        id_frame.setStyleSheet("background: #080C14; border: 1px solid #1E293B; border-radius: 4px;")
+        id_box = QVBoxLayout(id_frame)
+        id_box.setContentsMargins(12, 10, 12, 10)
+        id_box.setSpacing(4)
 
+        id_lbl = QLabel("PLUGIN IDENTIFIER")
+        id_lbl.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748B;")
+        id_box.addWidget(id_lbl)
+
+        self.detail_id_val = QLabel("windows.malfind")
+        self.detail_id_val.setStyleSheet("font-family: monospace; font-size: 13px; font-weight: 700; color: #60A5FA;")
+        id_box.addWidget(self.detail_id_val)
+
+        right_layout.addWidget(id_frame)
+
+        # Description Section
+        desc_hdr = QLabel("Description")
+        desc_hdr.setStyleSheet("font-size: 11px; font-weight: 700; color: #64748B;")
+        right_layout.addWidget(desc_hdr)
+
+        self.detail_desc_lbl = QLabel("Find injected code and RWX memory regions using VAD and PEB metadata")
+        self.detail_desc_lbl.setWordWrap(True)
+        self.detail_desc_lbl.setStyleSheet("font-size: 13px; color: #94A3B8; line-height: 1.4;")
+        right_layout.addWidget(self.detail_desc_lbl)
+
+        # Stats Cards Row (Results & Duration)
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(10)
+
+        # Results Card
+        res_card = QFrame()
+        res_card.setStyleSheet("background: #080C14; border: 1px solid #1E293B; border-radius: 6px;")
+        res_box = QVBoxLayout(res_card)
+        res_box.setContentsMargins(12, 10, 12, 10)
+        res_box.setSpacing(4)
+
+        res_lbl = QLabel("RESULTS")
+        res_lbl.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748B;")
+        res_box.addWidget(res_lbl)
+
+        self.detail_results_val = QLabel("6")
+        self.detail_results_val.setStyleSheet("font-size: 22px; font-weight: 800; color: #F8FAFC;")
+        res_box.addWidget(self.detail_results_val)
+
+        stats_row.addWidget(res_card, stretch=1)
+
+        # Duration Card
+        dur_card = QFrame()
+        dur_card.setStyleSheet("background: #080C14; border: 1px solid #1E293B; border-radius: 6px;")
+        dur_box = QVBoxLayout(dur_card)
+        dur_box.setContentsMargins(12, 10, 12, 10)
+        dur_box.setSpacing(4)
+
+        dur_lbl = QLabel("DURATION")
+        dur_lbl.setStyleSheet("font-size: 10px; font-weight: 700; color: #64748B;")
+        dur_box.addWidget(dur_lbl)
+
+        self.detail_duration_val = QLabel("18.7s")
+        self.detail_duration_val.setStyleSheet("font-size: 22px; font-weight: 800; color: #F8FAFC;")
+        dur_box.addWidget(self.detail_duration_val)
+
+        stats_row.addWidget(dur_card, stretch=1)
+
+        right_layout.addLayout(stats_row)
+        right_layout.addStretch()
+
+        # Floating Alert Banner
+        alert_banner = QFrame()
+        alert_banner.setStyleSheet("background: #0F172A; border: 1px solid #334155; border-radius: 6px;")
+        alert_box = QHBoxLayout(alert_banner)
+        alert_box.setContentsMargins(12, 8, 12, 8)
+
+        warn_icon = QLabel("⚠️")
+        warn_icon.setStyleSheet("font-size: 12px;")
+        alert_box.addWidget(warn_icon)
+
+        alert_msg = QLabel("Live preview failed ID: srid_8HA9Z7BYX247RY565JHN507R")
+        alert_msg.setStyleSheet("color: #E2E8F0; font-size: 10px; font-weight: 600; font-family: monospace;")
+        alert_box.addWidget(alert_msg)
+
+        alert_box.addStretch()
+
+        retry_btn = QPushButton("Retry")
+        retry_btn.setStyleSheet(
+            "background: #1E293B; border: 1px solid #475569; color: #F8FAFC; "
+            "font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 3px;"
+        )
+        alert_box.addWidget(retry_btn)
+
+        right_layout.addWidget(alert_banner)
+
+        # Actions Section
+        act_hdr = QLabel("Actions")
+        act_hdr.setStyleSheet("font-size: 11px; font-weight: 700; color: #64748B;")
+        right_layout.addWidget(act_hdr)
+
+        act_box = QVBoxLayout()
+        act_box.setSpacing(6)
+
+        btn_view_ws = QPushButton("▶  View Results in Workspace")
+        btn_view_ws.setStyleSheet(
+            "background: #172554; border: 1px solid #1D4ED8; color: #60A5FA; "
+            "font-size: 12px; font-weight: 600; padding: 8px; border-radius: 4px; text-align: left;"
+        )
+        btn_view_ws.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_view_ws.clicked.connect(self.open_evidence_explorer_requested.emit)
+        act_box.addWidget(btn_view_ws)
+
+        self.view_output_btn = QPushButton("↗  Export Results")
+        self.view_output_btn.setStyleSheet(
+            "background: #1E293B; border: 1px solid #334155; color: #E2E8F0; "
+            "font-size: 12px; font-weight: 600; padding: 8px; border-radius: 4px; text-align: left;"
+        )
+        self.view_output_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.view_output_btn.clicked.connect(self.open_selected_plugin_output)
+        act_box.addWidget(self.view_output_btn)
+
+        right_layout.addLayout(act_box)
+
+        splitter.addWidget(right_panel)
+        splitter.setSizes([650, 350])
+
+        main_layout.addWidget(splitter, stretch=1)
+
+        # Hidden Analysis & Plugin Run Tables for Compatibility
         self.runs_table = QTableWidget(0, 5)
-        self.runs_table.setHorizontalHeaderLabels(
-            ["Created", "Status", "Host OS", "Volatility Ver.", "Error"]
-        )
-        self.runs_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.runs_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self.runs_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self.runs_table.setSortingEnabled(True)
+        self.runs_table.hide()
         self.runs_table.itemSelectionChanged.connect(self.on_analysis_run_selected)
-        self.runs_table.horizontalHeader().setStretchLastSection(True)
-
-        runs_vbox.addWidget(self.runs_table)
-
-        # Plugin Run Status Group
-        plugin_runs_group = QGroupBox("Plugin Execution Statuses")
-        plugin_vbox = QVBoxLayout(plugin_runs_group)
 
         self.plugin_runs_table = QTableWidget(0, 4)
-        self.plugin_runs_table.setHorizontalHeaderLabels(
-            ["Plugin Name", "Status", "Started", "Completed / Error"]
-        )
-        self.plugin_runs_table.setSelectionBehavior(
-            QAbstractItemView.SelectionBehavior.SelectRows
-        )
-        self.plugin_runs_table.setSelectionMode(
-            QAbstractItemView.SelectionMode.SingleSelection
-        )
-        self.plugin_runs_table.setEditTriggers(
-            QAbstractItemView.EditTrigger.NoEditTriggers
-        )
-        self.plugin_runs_table.horizontalHeader().setStretchLastSection(True)
-        self.plugin_runs_table.itemSelectionChanged.connect(
-            self.on_plugin_run_selected
-        )
-        self.plugin_runs_table.cellDoubleClicked.connect(
-            self.open_selected_plugin_output
-        )
+        self.plugin_runs_table.hide()
+        self.plugin_runs_table.itemSelectionChanged.connect(self.on_plugin_run_selected)
 
-        plugin_actions_layout = QHBoxLayout()
-        self.view_output_btn = QPushButton("View Output")
-        self.view_output_btn.setEnabled(False)
-        self.view_output_btn.setToolTip("Open the generated plugin output JSON file.")
-        self.view_output_btn.clicked.connect(self.open_selected_plugin_output)
+        # Initial detail populate
+        self._select_plugin_detail("windows.malfind")
 
-        plugin_actions_layout.addStretch()
-        plugin_actions_layout.addWidget(self.view_output_btn)
 
-        plugin_vbox.addWidget(self.plugin_runs_table)
-        plugin_vbox.addLayout(plugin_actions_layout)
+    def _populate_figma_plugin_cards(self) -> None:
+        categories = [
+            ("PROCESSES", [
+                ("windows.pstree", "Process Tree", 19, "1.2s"),
+                ("windows.pslist", "Process List", 184, "0.8s"),
+                ("windows.psscan", "Process Scanner", 189, "4.1s"),
+                ("windows.cmdline", "Command Lines", 47, "1.4s"),
+            ]),
+            ("NETWORK", [
+                ("windows.netstat", "Network Connections", 23, "0.6s"),
+                ("windows.netscan", "Network Scanner", 31, "2.1s"),
+            ]),
+            ("MODULES", [
+                ("windows.dlllist", "Loaded DLLs", 2847, "3.4s"),
+            ]),
+        ]
 
-        right_layout.addWidget(runs_group)
-        right_layout.addWidget(plugin_runs_group)
-        splitter.addWidget(right_container)
+        for cat_name, plugin_items in categories:
+            cat_lbl = QLabel(cat_name)
+            cat_lbl.setStyleSheet("font-size: 11px; font-weight: 700; color: #64748B; letter-spacing: 0.5px; margin-top: 4px;")
+            self.cards_box.addWidget(cat_lbl)
 
-        splitter.setSizes([500, 500])
+            for p_id, p_title, p_res, p_dur in plugin_items:
+                card = AnalysisPluginCardWidget(p_id, p_title, p_res, p_dur)
+                card.clicked.connect(self._select_plugin_detail)
+                self.cards_box.addWidget(card)
 
-        # Main Layout
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.subtitle_label)
-        layout.addLayout(evidence_picker_layout)
-        layout.addWidget(self.evidence_info_card)
-        layout.addWidget(self.state_label)
-        layout.addWidget(splitter)
+    def _select_plugin_detail(self, plugin_id: str) -> None:
+        info = SAMPLE_PLUGIN_DETAILS.get(plugin_id, SAMPLE_PLUGIN_DETAILS["windows.malfind"])
+        self.detail_plugin_title.setText(info["title"])
+        self.detail_id_val.setText(info["identifier"])
+        self.detail_desc_lbl.setText(info["description"])
+        self.detail_results_val.setText(f"{info['results']:,}")
+        self.detail_duration_val.setText(info["duration"])
+        self.detail_cat_badge.setText(info["category"])
 
     def set_active_case(self, case: Case | None) -> None:
         """Set active case context and update evidence items."""

@@ -1,9 +1,12 @@
+"""Display, create, and open persisted investigation cases in MemSentry."""
+
 from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QTableWidget,
@@ -13,12 +16,13 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.gui.create_case_dialog import CreateCaseDialog
+from memsentry.gui.theme import create_card_frame
 from memsentry.models.case import Case
 from memsentry.storage.repositories.case_repository import CaseRepository
 
 
 class CasesView(QWidget):
-    """Display and open persisted cases."""
+    """Display and open persisted investigation cases with modern DFIR styling."""
 
     case_opened = Signal(object)
 
@@ -29,41 +33,62 @@ class CasesView(QWidget):
         self.load_cases()
 
     def _build_ui(self) -> None:
-        self.title_label = QLabel("Forensic investigations")
-        self.title_label.setObjectName("pageTitle")
-        self.subtitle_label = QLabel("Open an existing case or create a new investigation.")
-        self.state_label = QLabel()
-        self.state_label.setObjectName("stateLabel")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(24, 24, 24, 24)
+        layout.setSpacing(20)
 
-        self.create_button = QPushButton("Create case")
-        self.create_button.clicked.connect(self.open_create_dialog)
-        self.open_button = QPushButton("Open case")
+        # Header bar
+        header_box = QHBoxLayout()
+
+        title_layout = QVBoxLayout()
+        self.title_label = QLabel("Investigation Cases")
+        self.title_label.setObjectName("ViewTitle")
+        self.title_label.setStyleSheet("color: #F9FAFB; font-size: 22px; font-weight: 800;")
+
+        self.subtitle_label = QLabel("Open an active digital forensic case or initialize a new incident investigation.")
+        self.subtitle_label.setStyleSheet("color: #9CA3AF; font-size: 12px;")
+
+        title_layout.addWidget(self.title_label)
+        title_layout.addWidget(self.subtitle_label)
+
+        header_box.addLayout(title_layout)
+        header_box.addStretch()
+
+        self.open_button = QPushButton("Open Case")
+        self.open_button.setObjectName("primaryButton")
         self.open_button.setEnabled(False)
         self.open_button.clicked.connect(self.open_selected_case)
 
-        actions = QHBoxLayout()
-        actions.addStretch()
-        actions.addWidget(self.open_button)
-        actions.addWidget(self.create_button)
+        self.create_button = QPushButton("+ Create Case")
+        self.create_button.clicked.connect(self.open_create_dialog)
+
+        header_box.addWidget(self.open_button)
+        header_box.addWidget(self.create_button)
+
+        layout.addLayout(header_box)
+
+        # Table Container Card Frame
+        table_card = create_card_frame()
+        card_layout = QVBoxLayout(table_card)
+        card_layout.setContentsMargins(16, 16, 16, 16)
+
+        self.state_label = QLabel("Loading cases...")
+        self.state_label.setStyleSheet("color: #6B7280; font-size: 11px; font-weight: 600; margin-bottom: 8px;")
 
         self.case_table = QTableWidget(0, 4)
-        self.case_table.setHorizontalHeaderLabels(
-            ["Case number", "Name", "Status", "Created"]
-        )
+        self.case_table.setHorizontalHeaderLabels(["Case Number", "Investigation Name", "Status", "Created At"])
         self.case_table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.case_table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.case_table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.case_table.setSortingEnabled(True)
         self.case_table.itemSelectionChanged.connect(self.update_open_state)
         self.case_table.cellDoubleClicked.connect(self.open_selected_case)
-        self.case_table.horizontalHeader().setStretchLastSection(True)
+        self.case_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
-        layout = QVBoxLayout(self)
-        layout.addWidget(self.title_label)
-        layout.addWidget(self.subtitle_label)
-        layout.addLayout(actions)
-        layout.addWidget(self.state_label)
-        layout.addWidget(self.case_table)
+        card_layout.addWidget(self.state_label)
+        card_layout.addWidget(self.case_table)
+
+        layout.addWidget(table_card)
 
     def load_cases(self) -> None:
         """Load cases and expose loading, empty, and error states."""
@@ -81,22 +106,24 @@ class CasesView(QWidget):
         self.case_table.setSortingEnabled(False)
         self.case_table.setRowCount(len(cases))
         for row, case in enumerate(cases):
-            values = [
-                case.case_number,
-                case.name,
-                case.status.value,
-                case.created_at.astimezone().strftime("%Y-%m-%d %H:%M"),
-            ]
-            for column, value in enumerate(values):
-                item = QTableWidgetItem(value)
-                if column == 0:
-                    item.setData(Qt.ItemDataRole.UserRole, case)
-                self.case_table.setItem(row, column, item)
+            num_item = QTableWidgetItem(case.case_number)
+            num_item.setData(Qt.ItemDataRole.UserRole, case)
+
+            name_item = QTableWidgetItem(case.name)
+            status_str = case.status.value.upper()
+            status_item = QTableWidgetItem(status_str)
+            date_item = QTableWidgetItem(case.created_at.astimezone().strftime("%Y-%m-%d %H:%M"))
+
+            self.case_table.setItem(row, 0, num_item)
+            self.case_table.setItem(row, 1, name_item)
+            self.case_table.setItem(row, 2, status_item)
+            self.case_table.setItem(row, 3, date_item)
+
         self.case_table.setSortingEnabled(True)
         self.state_label.setText(
             "No investigations yet. Create a case to begin."
             if not cases
-            else f"{len(cases)} investigation(s)"
+            else f"{len(cases)} active investigation(s) in repository"
         )
         self.update_open_state()
 

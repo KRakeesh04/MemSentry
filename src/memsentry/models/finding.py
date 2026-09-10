@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class FindingSeverity(StrEnum):
@@ -27,14 +27,6 @@ class FindingCreate(BaseModel):
     severity: FindingSeverity
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
 
-    @field_validator("confidence")
-    @classmethod
-    def validate_confidence(cls, value: float | None) -> float | None:
-        """Validate confidence score range when specified."""
-        if value is not None and not (0.0 <= value <= 1.0):
-            raise ValueError("confidence must be between 0.0 and 1.0 inclusive")
-        return value
-
 
 class Finding(BaseModel):
     """A finding stored in the MemSentry database."""
@@ -47,11 +39,3 @@ class Finding(BaseModel):
     severity: FindingSeverity
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     created_at: datetime
-
-    @field_validator("confidence")
-    @classmethod
-    def validate_confidence(cls, value: float | None) -> float | None:
-        """Validate confidence score range when specified."""
-        if value is not None and not (0.0 <= value <= 1.0):
-            raise ValueError("confidence must be between 0.0 and 1.0 inclusive")
-        return value

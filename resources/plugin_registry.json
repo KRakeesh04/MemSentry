@@ -1,0 +1,151 @@
+{
+  "version": "0.1.0",
+  "plugins": [
+    {
+      "id": "system_info",
+      "display_name": "System Information",
+      "description": "Displays general operating system and kernel information.",
+      "category": "System",
+      "supported_os": [
+        "windows"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.info.Info"
+      },
+      "parser": "info_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "process_list",
+      "display_name": "Process List",
+      "description": "Lists active processes.",
+      "category": "Processes",
+      "supported_os": [
+        "windows",
+        "linux",
+        "mac"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.pslist.PsList",
+        "linux": "linux.pslist.PsList",
+        "mac": "mac.pslist.PsList"
+      },
+      "parser": "pslist_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "process_tree",
+      "display_name": "Process Tree",
+      "description": "Displays parent-child process relationships.",
+      "category": "Processes",
+      "supported_os": [
+        "windows",
+        "linux"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.pstree.PsTree",
+        "linux": "linux.pstree.PsTree"
+      },
+      "parser": "pstree_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "command_line",
+      "display_name": "Command Line",
+      "description": "Displays process command-line arguments.",
+      "category": "Processes",
+      "supported_os": [
+        "windows",
+        "linux",
+        "mac"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.cmdline.CmdLine",
+        "linux": "linux.psaux.PsAux",
+        "mac": "mac.psaux.Psaux"
+      },
+      "parser": "cmdline_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "network_connections",
+      "display_name": "Network Connections",
+      "description": "Lists active network connections.",
+      "category": "Network",
+      "supported_os": [
+        "windows",
+        "linux",
+        "mac"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.netscan.NetScan",
+        "linux": "linux.sockstat.Sockstat",
+        "mac": "mac.netstat.Netstat"
+      },
+      "parser": "netscan_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "loaded_modules",
+      "display_name": "Loaded Modules",
+      "description": "Lists DLLs or shared libraries loaded by processes.",
+      "category": "Modules",
+      "supported_os": [
+        "windows",
+        "linux",
+        "mac"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.dlllist.DllList",
+        "linux": "linux.elfs.Elfs",
+        "mac": "mac.list_files.List_Files"
+      },
+      "parser": "dlllist_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "memory_injection",
+      "display_name": "Memory Injection Detection",
+      "description": "Detects suspicious executable memory regions.",
+      "category": "Memory",
+      "supported_os": [
+        "windows"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.malfind.Malfind"
+      },
+      "parser": "malfind_parser",
+      "default_enabled": true,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "handles",
+      "display_name": "Open Handles",
+      "description": "Lists handles owned by processes.",
+      "category": "Processes",
+      "supported_os": [
+        "windows"
+      ],
+      "volatility_plugins": {
+        "windows": "windows.handles.Handles"
+      },
+      "parser": "handles_parser",
+      "default_enabled": false,
+      "requires_symbols": true,
+      "experimental": false
+    }
+  ]
+}

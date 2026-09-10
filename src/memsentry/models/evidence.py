@@ -24,6 +24,18 @@ class IntegrityStatus(StrEnum):
     UNAVAILABLE = "unavailable"
 
 
+def _validate_sha256_hex(value: str) -> str:
+    """Ensure SHA-256 is a valid 64-character hex string."""
+    value = value.strip().lower()
+    if len(value) != 64:
+        raise ValueError("sha256 must be a 64-character hexadecimal string")
+    try:
+        bytes.fromhex(value)
+    except ValueError as exc:
+        raise ValueError("sha256 must be a 64-character hexadecimal string") from exc
+    return value
+
+
 class EvidenceCreate(BaseModel):
     """Data required to register new forensic RAM evidence."""
 
@@ -37,11 +49,7 @@ class EvidenceCreate(BaseModel):
     @field_validator("sha256")
     @classmethod
     def validate_sha256(cls, value: str) -> str:
-        """Ensure SHA-256 is a valid 64-character hex string."""
-        value = value.strip().lower()
-        if len(value) != 64 or not all(c in "0123456789abcdef" for c in value):
-            raise ValueError("sha256 must be a 64-character hexadecimal string")
-        return value
+        return _validate_sha256_hex(value)
 
 
 class Evidence(BaseModel):
@@ -60,8 +68,4 @@ class Evidence(BaseModel):
     @field_validator("sha256")
     @classmethod
     def validate_sha256(cls, value: str) -> str:
-        """Ensure SHA-256 is a valid 64-character hex string."""
-        value = value.strip().lower()
-        if len(value) != 64 or not all(c in "0123456789abcdef" for c in value):
-            raise ValueError("sha256 must be a 64-character hexadecimal string")
-        return value
+        return _validate_sha256_hex(value)

@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, QUrl, Signal
-from PySide6.QtGui import QDesktopServices, QShowEvent
+from PySide6.QtGui import QColor, QDesktopServices, QShowEvent
 from PySide6.QtWidgets import (
     QComboBox,
     QFrame,
@@ -836,13 +836,13 @@ class AnalysisView(QWidget):
         if self.analysis_orchestrator is not None:
             # Disable UI controls during background execution
             self._set_controls_enabled(False)
+            self.current_running_analysis_id = analysis_run.id
             self.state_label.setText(
                 f"Running analysis {str(analysis_run.id)[:8]} ({len(selected_plugins)} plugins)... Please wait."
             )
             self.load_analysis_history(self.selected_evidence)
             self.select_analysis_run(analysis_run.id)
 
-            self.current_running_analysis_id = analysis_run.id
             if not self.status_poll_timer.isActive():
                 self.status_poll_timer.start()
 
@@ -937,6 +937,10 @@ class AnalysisView(QWidget):
         self.runs_table.setSortingEnabled(False)
         self.runs_table.setRowCount(len(runs))
 
+        if not runs:
+            self.state_label.setText("No analysis runs recorded for this evidence file yet.")
+            return
+
         for row, run in enumerate(runs):
             created_str = run.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
             status_str = run.status.value.upper()
@@ -997,6 +1001,16 @@ class AnalysisView(QWidget):
 
         self.plugin_runs_table.setRowCount(len(plugin_runs))
 
+        completed_cnt = sum(1 for pr in plugin_runs if pr.status.value == "completed")
+        failed_cnt = sum(1 for pr in plugin_runs if pr.status.value == "failed" or pr.error_message)
+        total_cnt = len(plugin_runs)
+
+        if total_cnt > 0 and self.current_running_analysis_id is None:
+            status_msg = f"Plugin Execution Summary: {completed_cnt}/{total_cnt} Completed"
+            if failed_cnt > 0:
+                status_msg += f" ({failed_cnt} Failed)"
+            self.state_label.setText(status_msg)
+
         for row, prun in enumerate(plugin_runs):
             started_str = (
                 prun.started_at.astimezone().strftime("%H:%M:%S")
@@ -1013,15 +1027,20 @@ class AnalysisView(QWidget):
                 )
             )
 
+            is_failed = prun.status.value == "failed" or prun.error_message is not None
+            status_text = "FAILED" if is_failed else prun.status.value.upper()
+
             values = [
                 prun.plugin_name,
-                prun.status.value.upper(),
+                status_text,
                 started_str,
                 completed_or_err,
             ]
 
             for col, text in enumerate(values):
                 item = QTableWidgetItem(text)
+                if is_failed:
+                    item.setForeground(QColor("#EF4444"))
                 if col == 0:
                     item.setData(Qt.ItemDataRole.UserRole, prun)
                 self.plugin_runs_table.setItem(row, col, item)

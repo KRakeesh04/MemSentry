@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memsentry.app.artifact_service import ArtifactService, ProcessItemViewModel
 from memsentry.gui.theme import (
     COLOR_BG_DARK,
     create_badge_label,
@@ -28,8 +29,13 @@ class DashboardView(QWidget):
     import_dump_requested = Signal()
     view_all_findings_requested = Signal()
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        artifact_service: ArtifactService | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self.artifact_service = artifact_service
         self.active_case: Case | None = None
         self.setStyleSheet(f"background-color: {COLOR_BG_DARK};")
         self._build_ui()
@@ -383,3 +389,31 @@ class DashboardView(QWidget):
         if case:
             self.title_label.setText(f"{case.name}")
             self.meta_label.setText(f"{case.case_number}  ·  Analyst: J. Mercer  ·  Status: {case.status.value.upper()}")
+
+    def load_persisted_telemetry_for_evidence(self, evidence_id: object) -> None:
+        """Fetch persisted artifact view models and update dashboard metrics."""
+        if self.artifact_service is None:
+            return
+
+        run_id = self.artifact_service.get_latest_analysis_run_for_evidence(evidence_id)  # type: ignore[arg-type]
+        if run_id is None:
+            return
+
+        vms = self.artifact_service.get_processes_for_analysis_run(run_id)
+        if not vms:
+            return
+
+        self.update_persisted_metrics(vms)
+
+    def update_persisted_metrics(self, vms: list[ProcessItemViewModel]) -> None:
+        """Update dashboard counts based on persisted process models."""
+        total_procs = len(vms)
+        suspicious_cnt = sum(1 for v in vms if v.is_suspicious)
+        sockets_cnt = sum(len(v.sockets) for v in vms)
+
+        # Update meta subtitle with real counts if active
+        if self.active_case:
+            self.meta_label.setText(
+                f"{self.active_case.case_number}  ·  Processes: {total_procs}  ·  "
+                f"Sockets: {sockets_cnt}  ·  Suspicious: {suspicious_cnt}"
+            )

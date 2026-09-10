@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
@@ -20,10 +21,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memsentry.app.artifact_service import ArtifactService, ProcessItemViewModel
 from memsentry.gui.add_evidence_dialog import AddEvidenceDialog
 from memsentry.gui.theme import create_badge_label, create_card_frame
 from memsentry.models.case import Case
 from memsentry.models.evidence import Evidence
+from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.volatility.plugin_applicability import (
     PluginApplicabilityService,
@@ -43,12 +46,18 @@ class EvidenceView(QWidget):
         plugin_applicability_service: type[
             PluginApplicabilityService
         ] = PluginApplicabilityService,
+        artifact_service: ArtifactService | None = None,
+        analysis_run_repository: AnalysisRunRepository | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.evidence_repository = evidence_repository
         self.plugin_applicability_service = plugin_applicability_service
+        self.artifact_service = artifact_service
+        self.analysis_run_repository = analysis_run_repository
         self.active_case: Case | None = None
+        self.selected_evidence: Evidence | None = None
+        self.all_process_vms: list[ProcessItemViewModel] = []
 
         self._build_ui()
         self.update_case_state()
@@ -168,6 +177,16 @@ class EvidenceView(QWidget):
         tabs_row.addWidget(susp_badge)
 
         col2_layout.addLayout(tabs_row)
+
+        # Search & Filtering Input
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Filter by process, PID, IP, plugin, artifact, severity...")
+        self.search_input.setStyleSheet(
+            "QLineEdit { background-color: #0F172A; color: #F8FAFC; border: 1px solid #1E293B; border-radius: 6px; padding: 6px 12px; font-size: 11px; }"
+            "QLineEdit:focus { border: 1px solid #2563EB; }"
+        )
+        self.search_input.textChanged.connect(self._on_search_filter_changed)
+        col2_layout.addWidget(self.search_input)
 
         # Tree Widget for Process Hierarchy
         self.process_tree = QTreeWidget()
@@ -350,14 +369,126 @@ class EvidenceView(QWidget):
         self.process_tree.expandAll()
         self.process_tree.setCurrentItem(ps_item)
 
+    def load_persisted_processes_for_evidence(self, evidence: Evidence) -> None:
+        """Fetch and populate persisted process artifacts from ArtifactService for the selected evidence."""
+        if self.artifact_service is None:
+            return
+
+        analysis_run_id = self.artifact_service.get_latest_analysis_run_for_evidence(evidence.id)
+        if analysis_run_id is None:
+            self.all_process_vms = []
+            return
+
+        process_vms = self.artifact_service.get_processes_for_analysis_run(analysis_run_id)
+        self.all_process_vms = process_vms
+        self._on_search_filter_changed(self.search_input.text())
+
+    def _on_search_filter_changed(self, text: str) -> None:
+        if not self.all_process_vms:
+            return
+        filtered = ArtifactService.filter_processes(self.all_process_vms, text)
+        self.populate_process_tree_from_view_models(filtered)
+
+    def populate_process_tree_from_view_models(self, vms: list[ProcessItemViewModel]) -> None:
+        """Populate process_tree QTreeWidget from ProcessItemViewModel list."""
+        self.process_tree.clear()
+
+        if not vms:
+            empty_item = QTreeWidgetItem(["No matching artifacts/processes found", "", "", "", ""])
+            empty_item.setFlags(empty_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+            self.process_tree.addTopLevelItem(empty_item)
+            return
+
+        # Build parent-child tree
+        item_by_pid: dict[int, QTreeWidgetItem] = {}
+
+        for vm in vms:
+            net_tag = "  [NET]" if vm.sockets else ""
+            item = QTreeWidgetItem([
+                f"● {vm.name}{net_tag}",
+                str(vm.pid),
+                str(vm.threads),
+                str(vm.handles),
+                vm.user,
+            ])
+            item.setData(0, Qt.ItemDataRole.UserRole, vm)
+            item_by_pid[vm.pid] = item
+
+            if vm.is_suspicious and vm.threat_description:
+                callout = QTreeWidgetItem([f"  → {vm.threat_description}", "", "", "", ""])
+                item.addChild(callout)
+
+        # Connect parent-child links
+        root_items: list[QTreeWidgetItem] = []
+        for vm in vms:
+            item = item_by_pid[vm.pid]
+            if vm.ppid is not None and vm.ppid in item_by_pid and vm.ppid != vm.pid:
+                item_by_pid[vm.ppid].addChild(item)
+            else:
+                root_items.append(item)
+
+        for root in root_items:
+            self.process_tree.addTopLevelItem(root)
+
+        self.process_tree.expandAll()
+        if root_items:
+            self.process_tree.setCurrentItem(root_items[0])
+
     def _on_tree_selection_changed(self) -> None:
         selected = self.process_tree.selectedItems()
         if not selected:
             return
         item = selected[0]
-        proc_text = item.text(0).replace("●", "").strip()
-        if proc_text:
-            self.insp_target_title.setText(proc_text)
+        vm = item.data(0, Qt.ItemDataRole.UserRole)
+        if isinstance(vm, ProcessItemViewModel):
+            self.display_process_inspector(vm)
+        else:
+            proc_text = item.text(0).replace("●", "").strip()
+            if proc_text:
+                self.insp_target_title.setText(proc_text)
+
+    def display_process_inspector(self, vm: ProcessItemViewModel) -> None:
+        """Update right-side Artifact Inspector panel with ProcessItemViewModel data."""
+        self.insp_target_title.setText(vm.name)
+
+        # Clear existing rows in insp_grid
+        while self.insp_grid.count():
+            child = self.insp_grid.takeAt(0)
+            if child:
+                w = child.widget()
+                if w is not None:
+                    w.deleteLater()
+                sub_layout = child.layout()
+                if sub_layout is not None:
+                    while sub_layout.count():
+                        sub_child = sub_layout.takeAt(0)
+                        if sub_child is not None:
+                            sub_w = sub_child.widget()
+                            if sub_w is not None:
+                                sub_w.deleteLater()
+
+        self._add_insp_row("PID", str(vm.pid))
+        self._add_insp_row("Parent PID", str(vm.ppid) if vm.ppid is not None else "N/A")
+        self._add_insp_row("User", vm.user or "N/A")
+        self._add_insp_row("Session", str(vm.session) if vm.session is not None else "N/A")
+        self._add_insp_row("Threads", str(vm.threads))
+        self._add_insp_row("Handles", str(vm.handles))
+        self._add_insp_row("Created", vm.created_at or "N/A")
+
+        score_disp = f"{vm.threat_score}/100" if vm.threat_score is not None else "N/A"
+        self._add_insp_row("Risk Score", score_disp)
+        self._add_insp_row("Source Plugin", vm.provenance_plugin)
+        if vm.analysis_run_id is not None:
+            self._add_insp_row("Analysis Run", str(vm.analysis_run_id)[:8])
+        if vm.sockets:
+            self._add_insp_row("Network Sockets", f"{len(vm.sockets)} active")
+        if vm.modules:
+            self._add_insp_row("Loaded Modules", f"{len(vm.modules)} modules")
+        if vm.memory_regions:
+            self._add_insp_row("Memory Regions", f"{len(vm.memory_regions)} RWX block(s)")
+
+        self.path_lbl.setText(vm.path if vm.path else "Not Available")
+        self.cmdline_lbl.setText(vm.command_line if vm.command_line else "Not Available")
 
     # -------------------------------------------------------------------------
     # Repository Data Wiring Methods & Signal Compatibility
@@ -434,8 +565,10 @@ class EvidenceView(QWidget):
         else:
             self.state_label.setText(f"{len(records)} evidence file(s) registered")
             first_ev = records[0]
+            self.selected_evidence = first_ev
             self.ev_title_label.setText(first_ev.original_filename)
             self.ev_sub_label.setText(f"Target OS: {first_ev.evidence_os.value.capitalize() if first_ev.evidence_os else 'Unknown'} · {first_ev.file_size_bytes:,} B")
+            self.load_persisted_processes_for_evidence(first_ev)
 
     def on_evidence_selected(self) -> None:
         row = self.evidence_table.currentRow()
@@ -453,6 +586,7 @@ class EvidenceView(QWidget):
         self.display_evidence_details(evidence)
 
     def display_evidence_details(self, evidence: Evidence) -> None:
+        self.selected_evidence = evidence
         os_str = (
             evidence.evidence_os.value.capitalize()
             if evidence.evidence_os is not None
@@ -470,6 +604,7 @@ class EvidenceView(QWidget):
         )
         self.detail_registered_label.setText(f"<b>Registered At:</b> {reg_str}")
         self.update_plugin_applicability(evidence)
+        self.load_persisted_processes_for_evidence(evidence)
 
     def update_plugin_applicability(self, evidence: Evidence) -> None:
         self.plugins_list.clear()

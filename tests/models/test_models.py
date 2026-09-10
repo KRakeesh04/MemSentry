@@ -180,7 +180,7 @@ def test_finding_create_confidence_validation() -> None:
 def test_evidence_model_sha256_validation() -> None:
     """Test that Evidence model also validates SHA256."""
     valid_sha = "c" * 64
-    
+
     # Valid SHA256
     evidence = Evidence(
         id=uuid4(),

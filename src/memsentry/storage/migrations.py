@@ -86,7 +86,7 @@ class MigrationManager:
                 f"Schema directory does not exist: {SCHEMA_DIRECTORY}"
             )
 
-        migration_pattern = re.compile(r"^(\d+)_[^.]+\.sql$")
+        migration_pattern = re.compile(r"^(\d+)_.+\.sql$")
         migrations = []
 
         for path in SCHEMA_DIRECTORY.glob("*.sql"):
@@ -96,7 +96,20 @@ class MigrationManager:
         if not migrations:
             return []
 
-        return sorted(migrations, key=lambda p: MigrationManager._get_migration_version(p))
+        sorted_migrations = sorted(
+            migrations, key=lambda p: MigrationManager._get_migration_version(p)
+        )
+
+        seen_versions: set[int] = set()
+        for path in sorted_migrations:
+            version = MigrationManager._get_migration_version(path)
+            if version in seen_versions:
+                raise MigrationError(
+                    f"Duplicate migration version found: {version} in {path.name}"
+                )
+            seen_versions.add(version)
+
+        return sorted_migrations
 
     @staticmethod
     def _get_migration_version(
@@ -127,33 +140,23 @@ class MigrationManager:
     ) -> None:
         """Apply one migration and record it as completed."""
 
-        migration_sql = migration_path.read_text(
-            encoding="utf-8"
-        )
-
-        migration_name = migration_path.name.replace("'", "''")
-
-        script = f"""
-        BEGIN IMMEDIATE;
-
-        {migration_sql}
-
-        INSERT INTO schema_migrations (
-            version,
-            name,
-            applied_at
-        )
-        VALUES (
-            {version},
-            '{migration_name}',
-            strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
-        );
-
-        COMMIT;
-        """
+        migration_sql = migration_path.read_text(encoding="utf-8")
 
         try:
-            connection.executescript(script)
+            connection.execute("BEGIN IMMEDIATE")
+            connection.executescript(migration_sql)
+            connection.execute(
+                """
+                INSERT INTO schema_migrations (
+                    version,
+                    name,
+                    applied_at
+                )
+                VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+                """,
+                (version, migration_path.name),
+            )
+            connection.commit()
 
             logger.info(
                 "Applied migration %s",

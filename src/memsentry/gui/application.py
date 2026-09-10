@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.analysis.orchestrator import AnalysisOrchestrator
+from memsentry.app.artifact_service import ArtifactService
 from memsentry.gui.acquisition_view import EvidenceAcquisitionView
 from memsentry.gui.analysis_view import AnalysisView
 from memsentry.gui.cases_view import CasesView
@@ -27,6 +28,7 @@ from memsentry.gui.theme import MEMSENTRY_QSS
 from memsentry.gui.timeline_view import TimelineView
 from memsentry.models.case import Case
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
+from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.plugin_run_repository import PluginRunRepository
@@ -42,6 +44,8 @@ class MainWindow(QMainWindow):
         analysis_run_repository: AnalysisRunRepository,
         plugin_run_repository: PluginRunRepository,
         analysis_orchestrator: AnalysisOrchestrator | None = None,
+        artifact_repository: ArtifactRepository | None = None,
+        artifact_service: ArtifactService | None = None,
     ) -> None:
         super().__init__()
         self.case_repository = case_repository
@@ -49,6 +53,17 @@ class MainWindow(QMainWindow):
         self.analysis_run_repository = analysis_run_repository
         self.plugin_run_repository = plugin_run_repository
         self.analysis_orchestrator = analysis_orchestrator
+        self.artifact_repository = artifact_repository
+
+        self.artifact_service: ArtifactService | None = None
+        if artifact_service is not None:
+            self.artifact_service = artifact_service
+        elif artifact_repository is not None:
+            self.artifact_service = ArtifactService(
+                artifact_repository=artifact_repository,
+                analysis_run_repository=analysis_run_repository,
+            )
+
         self.active_case: object | None = None
 
         self.setWindowTitle("MemSentry")
@@ -84,7 +99,7 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
 
         # 0. Command Center / Dashboard
-        self.dashboard_view = DashboardView()
+        self.dashboard_view = DashboardView(artifact_service=self.artifact_service)
         self.dashboard_view.open_investigation_requested.connect(lambda: self.sidebar.nav_list.setCurrentRow(1))
         self.dashboard_view.view_all_findings_requested.connect(lambda: self.sidebar.nav_list.setCurrentRow(4))
         self.pages.addWidget(self.dashboard_view)
@@ -94,7 +109,11 @@ class MainWindow(QMainWindow):
         self.pages.addWidget(self.acquisition_view)
 
         # 2. Evidence Explorer (Icon 🔍)
-        self.evidence_view = EvidenceView(evidence_repository)
+        self.evidence_view = EvidenceView(
+            evidence_repository=evidence_repository,
+            artifact_service=self.artifact_service,
+            analysis_run_repository=analysis_run_repository,
+        )
         self.pages.addWidget(self.evidence_view)
 
         # 3. Analysis / Plugin Center (Icon ⚡)
@@ -225,6 +244,8 @@ def create_application(
     analysis_run_repository: AnalysisRunRepository,
     plugin_run_repository: PluginRunRepository,
     analysis_orchestrator: AnalysisOrchestrator | None = None,
+    artifact_repository: ArtifactRepository | None = None,
+    artifact_service: ArtifactService | None = None,
 ) -> QApplication:
     """Instantiate application and main window with injected repositories and orchestrator."""
     app = cast(QApplication, QApplication.instance() or QApplication([]))
@@ -235,6 +256,8 @@ def create_application(
         analysis_run_repository,
         plugin_run_repository,
         analysis_orchestrator,
+        artifact_repository=artifact_repository,
+        artifact_service=artifact_service,
     )
     window.show()
 

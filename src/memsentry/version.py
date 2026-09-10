@@ -3,7 +3,6 @@
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
-
 try:
     __version__ = version("memsentry")
 except PackageNotFoundError:

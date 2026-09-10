@@ -8,7 +8,7 @@ name = "memsentry"
 dynamic = ["version"]
 description = "A memory forensics correlation and reporting platform built on Volatility 3."
 readme = "README.md"
-requires-python = ">=3.11,<3.13"
+requires-python = ">=3.11,<3.15"
 
 authors = [
     { name = "Pirasanth V." },
@@ -29,6 +29,8 @@ classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Operating System :: Microsoft :: Windows",
     "Topic :: Security",
     "Private :: Do Not Upload"
@@ -76,6 +78,10 @@ markers = [
 target-version = "py311"
 line-length = 100
 src = ["src", "tests"]
+include = [
+    "src/**/*.py",
+    "tests/**/*.py"
+]
 exclude = [
     ".git",
     ".venv",

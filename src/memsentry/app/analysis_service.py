@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 from memsentry.correlation.engine import CorrelationEngine
 from memsentry.volatility.adapter import VolatilityAdapter
 from memsentry.volatility.plugin_registry import PluginRegistry
 from memsentry.volatility.plugin_runner import PluginRunner
+from memsentry.yara.scanner import YaraScanner, YaraScanResult
 
 
 class AnalysisService:
@@ -23,6 +25,7 @@ class AnalysisService:
         volatility_adapter: VolatilityAdapter,
         plugin_registry: PluginRegistry,
         plugin_runner: PluginRunner,
+        yara_scanner: YaraScanner,
         correlation_engine: CorrelationEngine | None = None,
         os_type: str = "windows",
         dump_path: str = "",
@@ -30,11 +33,17 @@ class AnalysisService:
         self.volatility_adapter = volatility_adapter
         self.plugin_registry = plugin_registry
         self.plugin_runner = plugin_runner
+        self.yara_scanner = yara_scanner
         self.correlation_engine = correlation_engine
         self.os_type = os_type
         self.dump_path = dump_path
 
-    def run(self, analysis_run_id: Any, plugin_ids: Sequence[str]) -> list[dict[str, Any]]:
+    def run(
+        self,
+        analysis_run_id: Any,
+        plugin_ids: Sequence[str],
+        yara_rule_paths: Sequence[str | Path] = (),
+    ) -> list[dict[str, Any]]:
         """Analyze the evidence using the specified Volatility plugins.
 
         For each ``plugin_id`` the underlying :class:`PluginRunner` executes the
@@ -52,6 +61,17 @@ class AnalysisService:
                     os_type=self.os_type,
                 )
             )
+
+        if yara_rule_paths:
+            yara_result = self.yara_scanner.scan(
+                self.dump_path,
+                analysis_run_id,
+                tuple(yara_rule_paths),
+                self.os_type,
+            )
+        else:
+            yara_result = YaraScanResult(False, None, None, {}, ())
+        results.append({"yara": yara_result})
 
         # TODO: Correlate the artifacts from all plugins and persist the results.
 

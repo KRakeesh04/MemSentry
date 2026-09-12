@@ -137,7 +137,8 @@ exclude = [
 module = [
     "volatility3.*",
     "PySide6.*",
-    "networkx.*"
+    "networkx.*",
+    "yara.*"
 ]
 ignore_missing_imports = true
 

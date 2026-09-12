@@ -31,6 +31,19 @@ around the codebase.
 | `plugin_runner.PluginRunner` | Orchestrate one plugin run; parse and persist |
 | `app.analysis_service.AnalysisService` | Orchestrate selected plugins for an evidence image |
 | `correlation.engine.CorrelationEngine` | Correlate artifacts and generate forensic findings |
+| `yara.YaraScanner` | Compile supplied rules, scan read-only evidence, and persist `signature_match` artifacts |
+
+YARA is optional per analysis. Pass one or more `.yar`/`.yara` files (or a
+directory containing them) to `AnalysisService.run(..., yara_rule_paths=...)`.
+The scanner records SHA-256 hashes for each rule and the evidence before and
+after scanning, stores raw match JSON outside the evidence file, and preserves
+rule metadata plus each matched string offset. With no rule paths, the result
+is `requested=False` and the analysis remains successful.
+
+The bundled rules in `resources/yara/` are conservative triage indicators and
+are not malware verdicts. YARA syntax is OS-neutral, but the indicators are
+tagged for Windows, Linux, and macOS where applicable; useful detection still
+depends on the strings present in the memory image.
 
 ## Initialise the pieces
 

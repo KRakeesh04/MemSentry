@@ -26,6 +26,8 @@ class Database:
         *,
         timeout_seconds: float = 30.0,
     ) -> None:
+        if timeout_seconds < 0:
+            raise ValueError("timeout_seconds must be non-negative")
         self.database_path = database_path.expanduser().resolve()
         self.timeout_seconds = timeout_seconds
 
@@ -36,9 +38,6 @@ class Database:
             parents=True,
             exist_ok=True,
         )
-
-        with self.connection():
-            pass
 
         from memsentry.storage.migrations import MigrationManager
 

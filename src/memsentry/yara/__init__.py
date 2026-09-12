@@ -5,8 +5,8 @@ from memsentry.yara.scanner import (
     YaraEvidenceError,
     YaraMatch,
     YaraRuleError,
-    YaraScanResult,
     YaraScanner,
+    YaraScanResult,
     YaraUnavailableError,
 )
 

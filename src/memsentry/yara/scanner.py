@@ -233,4 +233,4 @@ def _import_yara() -> _YaraModule:
         raise YaraUnavailableError(
             "YARA rules were supplied, but yara-python is not installed."
         ) from error
-    return yara
+    return yara  # type: ignore[no-any-return]

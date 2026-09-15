@@ -115,3 +115,4 @@ PROJECT_CONTEXT.md
 *.mem
 *.dmp
 tests/memory_dumps
+tests/correlation/test_output/*

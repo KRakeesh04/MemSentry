@@ -1,0 +1,193 @@
+version: "1.0.0"
+name: "MemSentry correlation rules"
+description: >-
+  Deterministic, explainable triage rules. These rules describe correlations
+  between persisted artifacts; they are not malware verdicts. The correlation
+  engine must preserve observed artifacts separately from inferred relationships.
+
+rules:
+  - id: MS-R001
+    name: Executable private memory
+    description: A process owns a private memory region with executable protection.
+    severity: medium
+    score: 25
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      all:
+        - artifact_type: memory_region
+          field: private
+          equals: true
+        - artifact_type: memory_region
+          field: protection
+          contains_any: [execute, executable, "r-x", "-wx", "rwx"]
+    group_by: pid
+    limitations:
+      - Private executable memory is common in browsers, JIT runtimes, and security tools.
+      - A missing memory-region artifact is unavailable evidence, not a negative result.
+    benign_explanations:
+      - JIT compilation
+      - Runtime unpacking
+      - Legitimate injected instrumentation
+
+  - id: MS-R002
+    name: Executable private memory with network activity
+    description: A process owns executable private memory and a network connection.
+    severity: high
+    score: 35
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      all:
+        - rule: MS-R001
+        - artifact_type: network_connection
+          relation: same_pid
+    group_by: pid
+    limitations:
+      - Network ownership may be unavailable or incomplete in a captured image.
+    benign_explanations:
+      - Browser or server JIT activity
+      - Security monitoring software
+      - Application plugins or extensions
+
+  - id: MS-R003
+    name: Thread starts in executable private memory
+    description: A thread start address falls within an executable private memory region.
+    severity: high
+    score: 40
+    implementation_status: defined
+    applies_to: [windows]
+    requires:
+      all:
+        - artifact_type: thread
+          field: start_address
+          relation: inside
+          target_artifact_type: memory_region
+        - artifact_type: memory_region
+          field: private
+          equals: true
+        - artifact_type: memory_region
+          field: protection
+          contains_any: [execute, executable, "r-x", "-wx", "rwx"]
+    group_by: pid
+    limitations:
+      - The MVP Linux and macOS plugin sets do not provide a validated equivalent thread artifact.
+    benign_explanations:
+      - Runtime-generated code
+      - Profilers or debuggers
+
+  - id: MS-R004
+    name: YARA match in suspicious region
+    description: A YARA match location falls inside a suspicious executable private region.
+    severity: high
+    score: 45
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      all:
+        - artifact_type: signature_match
+          field: match_location
+          relation: inside
+          target_artifact_type: memory_region
+        - rule: MS-R001
+    group_by: pid
+    limitations:
+      - YARA rules are investigator-supplied indicators and may produce false positives.
+      - A file-level offset cannot be treated as a process virtual address without provenance.
+    benign_explanations:
+      - Known test strings
+      - Security product signatures
+      - Embedded third-party libraries
+
+  - id: MS-R005
+    name: Suspicious parent-child relationship
+    description: A configurable parent-child process relationship matches a suspicious pair.
+    severity: medium
+    score: 20
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      any:
+        - process_name: ["winword.exe", "excel.exe", "outlook.exe"]
+          child_name: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe"]
+        - parent_name: ["sshd", "nginx", "apache2", "httpd"]
+          child_name: ["sh", "bash", "zsh", "python", "perl"]
+    group_by: child_pid
+    configuration:
+      relationship_source: resources/rules/suspicious_parent_child.yaml
+    limitations:
+      - Legitimate automation and administration can create these relationships.
+      - Process-name matching alone is insufficient for attribution.
+    benign_explanations:
+      - Administrative scripts
+      - Software installers and update agents
+
+  - id: MS-R006
+    name: Unbacked executable module
+    description: A process has an executable module without a corresponding mapped file path.
+    severity: medium
+    score: 25
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      all:
+        - artifact_type: module
+          field: executable
+          equals: true
+        - artifact_type: module
+          field: path
+          one_of: [null, "", unavailable]
+    group_by: pid
+    limitations:
+      - Module extraction and path fields vary significantly by operating system.
+      - Unavailable path information is not proof that a module is unbacked.
+    benign_explanations:
+      - Anonymous runtime mappings
+      - JIT or unpacked code
+
+  - id: MS-R007
+    name: Suspicious command line with network activity
+    description: A process command line contains a download or interpreter indicator and owns a network connection.
+    severity: medium
+    score: 25
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      all:
+        - artifact_type: command_line
+          field: command_line
+          contains_any: [powershell, cmd.exe, curl, wget, nc, netcat, /bin/sh, /bin/bash]
+        - artifact_type: network_connection
+          relation: same_pid
+    group_by: pid
+    limitations:
+      - Command-line text may be truncated or absent from the image.
+      - Common utilities have extensive legitimate uses.
+    benign_explanations:
+      - Software deployment
+      - Package management
+      - Health checks and monitoring
+
+  - id: MS-R008
+    name: Process artifact inconsistency
+    description: A process is present in one process view but absent from a corroborating process view.
+    severity: low
+    score: 15
+    implementation_status: defined
+    applies_to: [windows, linux, mac]
+    requires:
+      all:
+        - artifact_type: process
+          relation: present_in
+          source: process_list
+        - artifact_type: process
+          relation: absent_from
+          source: process_tree
+    group_by: pid
+    limitations:
+      - Different Volatility process views have different coverage and failure modes.
+      - This is a lead for review, not proof of process hiding.
+    benign_explanations:
+      - Termination during acquisition
+      - Parser or symbol limitations
+      - Incomplete process-tree coverage

@@ -151,99 +151,21 @@ class AnalysisRunRepository:
 
     def mark_running(self, analysis_run_id: UUID) -> AnalysisRun:
         """Mark analysis run as running and set started_at to current UTC time."""
-
         now = datetime.now(UTC)
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE analysis_runs
-                SET
-                    status = ?,
-                    started_at = ?
-                WHERE id = ?
-                """,
-                (
-                    AnalysisRunStatus.RUNNING.value,
-                    now.isoformat(),
-                    str(analysis_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    evidence_id,
-                    status,
-                    application_version,
-                    volatility_version,
-                    host_os,
-                    created_at,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM analysis_runs
-                WHERE id = ?
-                """,
-                (str(analysis_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-        return self._row_to_analysis_run(row)
+        return self._update_status(
+            analysis_run_id,
+            status=AnalysisRunStatus.RUNNING,
+            started_at=now.isoformat(),
+        )
 
     def mark_completed(self, analysis_run_id: UUID) -> AnalysisRun:
         """Mark analysis run as completed and set completed_at to current UTC time."""
-
         now = datetime.now(UTC)
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE analysis_runs
-                SET
-                    status = ?,
-                    completed_at = ?
-                WHERE id = ?
-                """,
-                (
-                    AnalysisRunStatus.COMPLETED.value,
-                    now.isoformat(),
-                    str(analysis_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    evidence_id,
-                    status,
-                    application_version,
-                    volatility_version,
-                    host_os,
-                    created_at,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM analysis_runs
-                WHERE id = ?
-                """,
-                (str(analysis_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-        return self._row_to_analysis_run(row)
+        return self._update_status(
+            analysis_run_id,
+            status=AnalysisRunStatus.COMPLETED,
+            completed_at=now.isoformat(),
+        )
 
     def mark_completed_with_errors(
         self,
@@ -251,53 +173,14 @@ class AnalysisRunRepository:
         error_message: str | None = None,
     ) -> AnalysisRun:
         """Mark analysis run as completed with errors and record error details."""
-
         now = datetime.now(UTC)
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE analysis_runs
-                SET
-                    status = ?,
-                    completed_at = ?,
-                    error_message = ?
-                WHERE id = ?
-                """,
-                (
-                    AnalysisRunStatus.COMPLETED_WITH_ERRORS.value,
-                    now.isoformat(),
-                    error_message,
-                    str(analysis_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    evidence_id,
-                    status,
-                    application_version,
-                    volatility_version,
-                    host_os,
-                    created_at,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM analysis_runs
-                WHERE id = ?
-                """,
-                (str(analysis_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-        return self._row_to_analysis_run(row)
+        return self._update_status(
+            analysis_run_id,
+            status=AnalysisRunStatus.COMPLETED_WITH_ERRORS,
+            completed_at=now.isoformat(),
+            error_message=error_message,
+            update_error_message=True,
+        )
 
     def mark_failed(
         self,
@@ -305,73 +188,57 @@ class AnalysisRunRepository:
         error_message: str,
     ) -> AnalysisRun:
         """Mark analysis run as failed with error message."""
-
         now = datetime.now(UTC)
-
-        with self.database.transaction() as connection:
-            cursor = connection.execute(
-                """
-                UPDATE analysis_runs
-                SET
-                    status = ?,
-                    completed_at = ?,
-                    error_message = ?
-                WHERE id = ?
-                """,
-                (
-                    AnalysisRunStatus.FAILED.value,
-                    now.isoformat(),
-                    error_message,
-                    str(analysis_run_id),
-                ),
-            )
-
-            if cursor.rowcount == 0:
-                raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-            row = connection.execute(
-                """
-                SELECT
-                    id,
-                    evidence_id,
-                    status,
-                    application_version,
-                    volatility_version,
-                    host_os,
-                    created_at,
-                    started_at,
-                    completed_at,
-                    error_message
-                FROM analysis_runs
-                WHERE id = ?
-                """,
-                (str(analysis_run_id),),
-            ).fetchone()
-
-        if row is None:
-            raise AnalysisRunNotFoundError(f"Analysis run not found: {analysis_run_id}")
-
-        return self._row_to_analysis_run(row)
+        return self._update_status(
+            analysis_run_id,
+            status=AnalysisRunStatus.FAILED,
+            completed_at=now.isoformat(),
+            error_message=error_message,
+            update_error_message=True,
+        )
 
     def mark_cancelled(self, analysis_run_id: UUID) -> AnalysisRun:
         """Mark analysis run as cancelled."""
-
         now = datetime.now(UTC)
+        return self._update_status(
+            analysis_run_id,
+            status=AnalysisRunStatus.CANCELLED,
+            completed_at=now.isoformat(),
+        )
+
+    def _update_status(
+        self,
+        analysis_run_id: UUID,
+        status: AnalysisRunStatus,
+        *,
+        started_at: str | None = None,
+        completed_at: str | None = None,
+        error_message: str | None = None,
+        update_error_message: bool = False,
+    ) -> AnalysisRun:
+        """Helper method to update status and timestamps for an analysis run."""
+        query_parts = ["status = ?"]
+        params: list[str | None] = [status.value]
+
+        if started_at is not None:
+            query_parts.append("started_at = ?")
+            params.append(started_at)
+
+        if completed_at is not None:
+            query_parts.append("completed_at = ?")
+            params.append(completed_at)
+
+        if update_error_message:
+            query_parts.append("error_message = ?")
+            params.append(error_message)
+
+        params.append(str(analysis_run_id))
+        set_clause = ", ".join(query_parts)
 
         with self.database.transaction() as connection:
             cursor = connection.execute(
-                """
-                UPDATE analysis_runs
-                SET
-                    status = ?,
-                    completed_at = ?
-                WHERE id = ?
-                """,
-                (
-                    AnalysisRunStatus.CANCELLED.value,
-                    now.isoformat(),
-                    str(analysis_run_id),
-                ),
+                f"UPDATE analysis_runs SET {set_clause} WHERE id = ?",
+                params,
             )
 
             if cursor.rowcount == 0:

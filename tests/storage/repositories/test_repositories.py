@@ -409,7 +409,7 @@ def test_repository_empty_list_results(db: Database) -> None:
 def test_repository_special_characters_in_strings(db: Database) -> None:
     """Test handling of special characters in text fields."""
     case_repo = CaseRepository(db)
-    
+
     # Test with special characters that might cause SQL issues
     special_name = "Test' with \"quotes\" and \\backslashes\\ and ;semicolons;"
     case = case_repo.create(
@@ -422,7 +422,7 @@ def test_repository_special_characters_in_strings(db: Database) -> None:
     assert case.name == special_name
     assert "'" in case.description
     assert '"' in case.description
-    
+
     # Retrieve and verify
     retrieved = case_repo.get_by_id(case.id)
     assert retrieved is not None
@@ -434,7 +434,7 @@ def test_repository_none_handling(db: Database) -> None:
     case_repo = CaseRepository(db)
     evidence_repo = EvidenceRepository(db)
     finding_repo = FindingRepository(db)
-    
+
     case = case_repo.create(
         CaseCreate(
             case_number="NONE-001",
@@ -443,7 +443,7 @@ def test_repository_none_handling(db: Database) -> None:
         )
     )
     assert case.description is None
-    
+
     # Evidence with None OS
     evidence = evidence_repo.create(
         EvidenceCreate(
@@ -456,7 +456,7 @@ def test_repository_none_handling(db: Database) -> None:
         )
     )
     assert evidence.evidence_os is None
-    
+
     # Finding with None confidence
     analysis_run = AnalysisRunRepository(db).create(
         AnalysisRunCreate(
@@ -499,7 +499,7 @@ def test_repository_json_serialization_edge_cases(db: Database) -> None:
             host_os=HostOS.LINUX,
         )
     )
-    
+
     # Test plugin run with complex nested config
     plugin_repo = PluginRunRepository(db)
     complex_config = {
@@ -514,7 +514,7 @@ def test_repository_json_serialization_edge_cases(db: Database) -> None:
         "empty_dict": {},
         "empty_list": [],
     }
-    
+
     plugin_run = plugin_repo.create(
         PluginRunCreate(
             analysis_run_id=analysis_run.id,
@@ -523,7 +523,7 @@ def test_repository_json_serialization_edge_cases(db: Database) -> None:
         )
     )
     assert plugin_run.configuration == complex_config
-    
+
     # Test finding evidence with complex supporting data
     finding = FindingRepository(db).create(
         FindingCreate(
@@ -534,7 +534,7 @@ def test_repository_json_serialization_edge_cases(db: Database) -> None:
             severity=FindingSeverity.HIGH,
         )
     )
-    
+
     finding_ev_repo = FindingEvidenceRepository(db)
     complex_supporting = {
         "process": {
@@ -545,7 +545,7 @@ def test_repository_json_serialization_edge_cases(db: Database) -> None:
         "hex_dump": "00 01 02 03",
         "timestamps": ["2026-01-01T00:00:00Z", "2026-01-01T01:00:00Z"],
     }
-    
+
     finding_ev = finding_ev_repo.create(
         FindingEvidenceCreate(
             finding_id=finding.id,
@@ -570,7 +570,7 @@ def test_analysis_run_status_transitions(db: Database) -> None:
             sha256="a" * 64,
         )
     )
-    
+
     repo = AnalysisRunRepository(db)
     run = repo.create(
         AnalysisRunCreate(
@@ -580,15 +580,15 @@ def test_analysis_run_status_transitions(db: Database) -> None:
             host_os=HostOS.LINUX,
         )
     )
-    
+
     # Test that we can mark running from pending
     running = repo.mark_running(run.id)
     assert running.status == AnalysisRunStatus.RUNNING
-    
+
     # Test that we can mark completed from running
     completed = repo.mark_completed(running.id)
     assert completed.status == AnalysisRunStatus.COMPLETED
-    
+
     # Test that we can mark failed from pending
     run2 = repo.create(
         AnalysisRunCreate(
@@ -622,9 +622,9 @@ def test_plugin_run_with_optional_output_fields(db: Database) -> None:
             host_os=HostOS.LINUX,
         )
     )
-    
+
     repo = PluginRunRepository(db)
-    
+
     # Create with None output fields
     plugin_run = repo.create(
         PluginRunCreate(
@@ -635,12 +635,12 @@ def test_plugin_run_with_optional_output_fields(db: Database) -> None:
     )
     assert plugin_run.raw_output_path is None
     assert plugin_run.raw_output_sha256 is None
-    
+
     # Mark failed without output path
     failed = repo.mark_failed(plugin_run.id, "Test failure")
     assert failed.raw_output_path is None
     assert failed.raw_output_sha256 is None
-    
+
     # Mark failed with output path
     plugin_run2 = repo.create(
         PluginRunCreate(

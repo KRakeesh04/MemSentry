@@ -458,7 +458,13 @@ pytest --cov=memsentry --cov-report=term-missing
 Run code-quality checks:
 
 ```bash
-ruff check src tests
+ruff check
+```
+
+Auto-fix lint issues (same idea as running `pytest` — no extra paths needed):
+
+```bash
+ruff check --fix
 ```
 
 Run static type checks:
@@ -497,6 +503,43 @@ MEMSENTRY_TEST_DUMP=/path/to/other.dump MEMSENTRY_TEST_OS=linux pytest tests/ana
 ```
 
 The test is skipped automatically when the configured dump file does not exist.
+
+
+### Test: Correlation End-to-End Scripts
+
+The correlation end-to-end scripts exercise the full backend pipeline (case →
+evidence → analysis run → plugin runs → artifacts → correlation → findings →
+reports) against a real memory dump:
+
+| Script | What it runs |
+| ------ | ------------ |
+| `tests/correlation/test_end_to_end.py` | Correlation on mock artifacts; prints findings and four reports. No dump required. |
+| `tests/correlation/test_real_dump_e2e.py` | Full backend pipeline with a real dump (defaults to the smallest Windows dump), real SHA-256 hashing, printable report and JSON export. |
+
+Run the dump-based script with:
+
+```bash
+python tests/correlation/test_real_dump_e2e.py
+python tests/correlation/test_real_dump_e2e.py --memory-dump tests/memory_dumps/windows/sample-01.mem
+```
+
+The OS (`windows`, `linux`, or `mac`) is inferred from the dump's parent folder.
+Each run writes its outputs to a fresh unique folder under
+`tests/correlation/test_output/`:
+
+```text
+tests/correlation/test_output/run_20260913_005754_e2544823/
+├── test_backend.db
+└── test_output/
+    ├── backend_analysis_report.txt
+    └── backend_analysis_data.json
+```
+
+Run `test_end_to_end.py` (no dump) with:
+
+```bash
+python tests/correlation/test_end_to_end.py
+```
 
 
 | Command                                                | Purpose (one line)                                                                                                                 |

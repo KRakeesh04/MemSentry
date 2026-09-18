@@ -1,0 +1,14 @@
+version: "1.0.0"
+description: >-
+  Optional, reviewable parent-child relationships used by MS-R005. These are
+  triage indicators and should be tuned for the investigator's environment.
+
+relationships:
+  - id: windows-office-to-script
+    applies_to: [windows]
+    parent_names: [winword.exe, excel.exe, outlook.exe]
+    child_names: [powershell.exe, cmd.exe, wscript.exe, cscript.exe]
+  - id: unix-daemon-to-shell
+    applies_to: [linux, mac]
+    parent_names: [sshd, nginx, apache2, httpd]
+    child_names: [sh, bash, zsh, python, perl]

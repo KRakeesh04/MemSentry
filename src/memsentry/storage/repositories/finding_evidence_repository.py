@@ -133,7 +133,12 @@ class FindingEvidenceRepository:
     def _row_to_finding_evidence(row: sqlite3.Row) -> FindingEvidence:
         """Convert a SQLite row into a FindingEvidence model."""
 
-        supporting_data = json.loads(row["supporting_data_json"])
+        try:
+            supporting_data = json.loads(row["supporting_data_json"])
+        except json.JSONDecodeError as exc:
+            raise FindingEvidenceRepositoryError(
+                "Invalid JSON supporting data payload in finding evidence record."
+            ) from exc
 
         return FindingEvidence(
             id=row["id"],

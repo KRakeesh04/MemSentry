@@ -78,6 +78,10 @@ markers = [
 target-version = "py311"
 line-length = 100
 src = ["src", "tests"]
+include = [
+    "src/**/*.py",
+    "tests/**/*.py"
+]
 exclude = [
     ".git",
     ".venv",
@@ -133,7 +137,8 @@ exclude = [
 module = [
     "volatility3.*",
     "PySide6.*",
-    "networkx.*"
+    "networkx.*",
+    "yara.*"
 ]
 ignore_missing_imports = true
 

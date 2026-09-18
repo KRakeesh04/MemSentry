@@ -34,6 +34,20 @@ afterwards, the same as a dump the investigator already selected.
 | `plugin_registry.PluginRegistry` | Approved/available plugins and their parsers |
 | `plugin_runner.PluginRunner` | Orchestrate one plugin run; parse and persist |
 | `app.analysis_service.AnalysisService` | Orchestrate selected plugins for an evidence image |
+| `correlation.engine.CorrelationEngine` | Correlate artifacts and generate forensic findings |
+| `yara.YaraScanner` | Compile supplied rules, scan read-only evidence, and persist `signature_match` artifacts |
+
+YARA is optional per analysis. Pass one or more `.yar`/`.yara` files (or a
+directory containing them) to `AnalysisService.run(..., yara_rule_paths=...)`.
+The scanner records SHA-256 hashes for each rule and the evidence before and
+after scanning, stores raw match JSON outside the evidence file, and preserves
+rule metadata plus each matched string offset. With no rule paths, the result
+is `requested=False` and the analysis remains successful.
+
+The bundled rules in `resources/yara/` are conservative triage indicators and
+are not malware verdicts. YARA syntax is OS-neutral, but the indicators are
+tagged for Windows, Linux, and macOS where applicable; useful detection still
+depends on the strings present in the memory image.
 
 ## Initialise the pieces
 
@@ -136,6 +150,56 @@ service = AnalysisService(
 )
 
 results = service.run(analysis_run_id, ["process_list", "network_connections"])
+```
+
+## Correlation Engine
+
+The correlation engine processes normalized artifacts and generates forensic findings by applying detection rules.
+
+```python
+from memsentry.correlation import CorrelationEngine
+from memsentry.storage.repositories.artifact_repository import ArtifactRepository
+
+engine = CorrelationEngine(os_type="windows")
+artifact_repo = ArtifactRepository(database)
+
+# Get all artifacts for an analysis run
+artifacts = artifact_repo.list_by_analysis_run(analysis_run_id)
+
+# Run correlation analysis
+result = engine.correlate(artifacts, analysis_run_id)
+
+# Access findings
+for finding in result.findings:
+    print(f"Rule: {finding.rule_id}")
+    print(f"Title: {finding.title}")
+    print(f"Severity: {finding.severity}")
+    print(f"Confidence: {finding.confidence}")
+
+# Access relationships
+for relationship in result.relationships:
+    print(f"Type: {relationship.relationship_type}")
+    print(f"Confidence: {relationship.confidence}")
+
+# Access process contexts
+for pid, context in result.process_contexts.items():
+    print(f"PID {pid}: {context.process_name}")
+    print(f"Memory regions: {len(context.memory_regions)}")
+    print(f"Network connections: {len(context.network_connections)}")
+```
+
+The correlation engine implements 8 detection rules as specified in REQUIREMENTS.md:
+
+- **MS-R001**: Executable Private Memory
+- **MS-R002**: Executable Private Memory with Network Activity  
+- **MS-R003**: Thread Start in Executable Private Memory
+- **MS-R004**: YARA Match in Suspicious Region
+- **MS-R005**: Suspicious Parent-Child Relationship
+- **MS-R006**: Process with Hidden Attributes
+- **MS-R007**: Multiple Suspicious Indicators in Single Process
+- **MS-R008**: Unusual Network Connection Patterns
+
+Each rule includes severity levels, confidence scores, and benign explanations to support forensic triage decisions.
 ```
 
 ## Safety rules (forensic invariants)

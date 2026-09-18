@@ -1,0 +1,46 @@
+"""Shared workspace colors and component styling."""
+
+from PySide6.QtGui import QPalette
+from PySide6.QtWidgets import QApplication
+
+
+def workspace_stylesheet() -> str:
+    dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    background, surface, text, muted, border, accent, selected = (
+        ("#11151C", "#1B212B", "#E5E7EB", "#A5B0C0", "#303947", "#60A5FA", "#20334F")
+        if dark else
+        ("#F1F5F9", "#FFFFFF", "#172033", "#526174", "#DCE3EC", "#2563EB", "#E8F0FE")
+    )
+    return f"""
+        QWidget#workspace {{ background: {background}; color: {text}; }}
+        #workspace QScrollArea, #workspace QScrollArea > QWidget > QWidget {{
+            background: {background}; border: none;
+        }}
+        #workspace QLabel {{ color: {text}; background: transparent; }}
+        #workspace QLabel#pageTitle {{ font-size: 26px; font-weight: bold; }}
+        #workspace QLabel#sectionTitle {{ font-size: 16px; font-weight: bold; }}
+        #workspace QLabel#metric {{ font-size: 20px; font-weight: bold; }}
+        #workspace QLabel#muted {{ color: {muted}; }}
+        #workspace QFrame#card {{
+            background: {surface}; border: 1px solid {border}; border-radius: 10px;
+        }}
+        #workspace QLabel#previewBanner, #workspace QLabel#jobStatus {{
+            background: {surface}; color: {muted}; padding: 14px 24px;
+            border-bottom: 1px solid {border};
+        }}
+        #workspace QTableWidget {{
+            background: {surface}; color: {text}; border: 1px solid {border};
+            border-radius: 8px; selection-background-color: {selected};
+            selection-color: {accent};
+        }}
+        #workspace QTableWidget::item {{ padding: 8px; border-bottom: 1px solid {border}; }}
+        #workspace QHeaderView::section {{
+            background: {surface}; color: {muted}; padding: 12px 8px;
+            border: none; border-bottom: 1px solid {border}; font-weight: bold;
+        }}
+        #workspace QPushButton {{
+            padding: 10px 16px; border-radius: 6px; border: 1px solid {border};
+            background: {surface}; color: {muted};
+        }}
+        #workspace QTableWidget:focus {{ border: 1px solid {accent}; }}
+    """

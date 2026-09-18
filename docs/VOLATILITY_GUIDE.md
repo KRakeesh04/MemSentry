@@ -20,6 +20,10 @@ The `AnalysisService` only loops over the selected plugins and delegates to the
 `PluginRunner`. Keep it that way — do not scatter direct Volatility calls
 around the codebase.
 
+Live memory capture, if implemented later, belongs in `acquisition/`, not here.
+`DumpManager` produces a hashed raw file; Volatility only reads that file
+afterwards, the same as a dump the investigator already selected.
+
 ## Components
 
 | Component | Responsibility |

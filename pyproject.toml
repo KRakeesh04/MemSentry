@@ -54,6 +54,9 @@ version = { file = ["version.txt"] }
 where = ["src"]
 include = ["memsentry*"]
 
+[tool.setuptools.package-data]
+"memsentry.gui" = ["assets/*.svg"]
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

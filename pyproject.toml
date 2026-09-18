@@ -135,6 +135,7 @@ exclude = [
 
 [[tool.mypy.overrides]]
 module = [
+    "psutil.*",
     "volatility3.*",
     "PySide6.*",
     "networkx.*",

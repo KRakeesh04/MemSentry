@@ -27,7 +27,7 @@ ProgressListener = Callable[[ProgressDetails], None]
 def physical_memory_bytes() -> int:
     """Return the host's physical memory size for percentage estimation."""
 
-    return psutil.virtual_memory().total
+    return int(psutil.virtual_memory().total)
 
 
 def calculate_progress(
@@ -54,15 +54,14 @@ def calculate_progress(
 
     expected_bytes = expected_bytes or physical_memory_bytes()
     throughput = bytes_written / elapsed_seconds if elapsed_seconds > 0 else 0.0
+    eta_seconds: float | None
     if completed:
         percentage = 100.0
         eta_seconds = 0.0
     else:
         percentage = min(99.0, bytes_written / expected_bytes * 100)
         eta_seconds = (
-            max(0.0, expected_bytes - bytes_written) / throughput
-            if throughput > 0
-            else None
+            max(0.0, expected_bytes - bytes_written) / throughput if throughput > 0 else None
         )
 
     return ProgressDetails(

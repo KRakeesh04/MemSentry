@@ -20,9 +20,7 @@ class MacOSPmemAdapter(DumpAdapter):
     target_os = "macos"
 
     def __init__(self, executable: str | Path | None = None) -> None:
-        self._executable = configured_executable(
-            executable, "MEMSENTRY_OSXPMEM", ("osxpmem",)
-        )
+        self._executable = configured_executable(executable, "MEMSENTRY_OSXPMEM", ("osxpmem",))
 
     @property
     def executable(self) -> Path:

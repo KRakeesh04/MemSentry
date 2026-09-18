@@ -153,7 +153,7 @@ def require_elevated_privileges(tool_name: str) -> None:
     if os.name == "nt":
         import ctypes
 
-        is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())
+        is_admin = bool(ctypes.windll.shell32.IsUserAnAdmin())  # type: ignore[attr-defined]
     else:
         is_admin = os.geteuid() == 0
     if not is_admin:
@@ -163,8 +163,8 @@ def require_elevated_privileges(tool_name: str) -> None:
 def require_platform(expected: str, tool_name: str) -> None:
     """Prevent a platform-specific tool from running on the wrong host."""
 
-    actual = "windows" if os.name == "nt" else (
-        "macos" if os.uname().sysname == "Darwin" else "linux"
+    actual = (
+        "windows" if os.name == "nt" else ("macos" if os.uname().sysname == "Darwin" else "linux")
     )
     if actual != expected:
         raise AcquisitionError(f"{tool_name} is only supported on {expected} hosts")

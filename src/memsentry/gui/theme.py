@@ -59,4 +59,22 @@ def workspace_stylesheet() -> str:
             border-radius: 5px; min-height: 20px; text-align: center;
         }}
         #workspace QProgressBar::chunk {{ background: {accent}; border-radius: 4px; }}
+        #workspace QPushButton#choiceCard {{
+            background: {surface}; border: 1px solid {border}; border-radius: 10px;
+            padding: 0; text-align: left;
+        }}
+        #workspace QPushButton#choiceCard:checked {{
+            background: {selected}; border: 1px solid {accent};
+        }}
+        #workspace QPushButton#choiceCard:checked QLabel#choiceTitle {{ color: {accent}; }}
+        #workspace QLabel#choiceTitle {{ font-weight: bold; }}
+        #workspace QPushButton#choiceCard:disabled QLabel {{ color: {muted}; }}
+        #workspace QPushButton#choiceCard:focus, #workspace QPushButton#fileDropArea:focus {{
+            border: 2px solid {accent};
+        }}
+        #workspace QPushButton#fileDropArea {{
+            border: 2px dashed {border}; border-radius: 10px;
+            background: {surface}; color: {text}; padding: 24px;
+        }}
+        #workspace QPushButton#fileDropArea:hover {{ border-color: {accent}; background: {selected}; }}
     """

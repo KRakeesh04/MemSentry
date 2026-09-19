@@ -1,10 +1,12 @@
 """Memory-image import and live acquisition backed by the intake service."""
 
+import platform
 from pathlib import Path
 from threading import Event
 
 from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -21,7 +23,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memsentry.acquisition.config import load_environment_file
+from memsentry.acquisition.tool_catalog import available_tools
 from memsentry.app.intake_service import IntakeRequest, IntakeService
+from memsentry.gui.intake_widgets import ChoiceCard, FileDropArea, SystemCard
 from memsentry.models.evidence import EvidenceOS
 
 
@@ -76,10 +81,23 @@ class EvidencePage(QScrollArea):
         form_layout = QVBoxLayout(self.form)
         form_layout.setContentsMargins(24, 24, 24, 24)
         form_layout.setSpacing(16)
-        self.mode = QComboBox()
+        self.mode = QComboBox(self.form)
         self.mode.addItems(["Import memory image", "Live memory acquisition"])
         self.mode.setAccessibleName("Evidence source")
-        form_layout.addWidget(self.mode)
+        self.mode.hide()
+        mode_cards = QHBoxLayout()
+        self.mode_buttons = QButtonGroup(self)
+        for index, (name, description) in enumerate(
+            (
+                ("Import Memory Dump", "Load an existing memory image"),
+                ("Live Memory Acquisition", "Capture RAM from this computer"),
+            )
+        ):
+            card = ChoiceCard(name, description)
+            self.mode_buttons.addButton(card, index)
+            mode_cards.addWidget(card, 1)
+        self.mode_buttons.idClicked.connect(self.mode.setCurrentIndex)
+        form_layout.addLayout(mode_cards)
         self.mode_hint = QLabel()
         self.mode_hint.setWordWrap(True)
         self.mode_hint.setObjectName("muted")
@@ -107,7 +125,6 @@ class EvidencePage(QScrollArea):
         form.addRow("Case", case_row)
         form.addRow("Case number", self.case_number)
         form.addRow("Case name", self.case_name)
-        form_layout.addLayout(form)
 
         self.import_fields = QWidget()
         import_form = QFormLayout(self.import_fields)
@@ -115,7 +132,17 @@ class EvidencePage(QScrollArea):
         import_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         self.source = QLineEdit()
         self.source.setPlaceholderText("Select a .raw, .mem, .lime, or other memory image")
-        import_form.addRow("Memory image", self._path_row(self.source))
+        self.drop_area = FileDropArea()
+        self.drop_area.clicked.connect(lambda: self._browse(self.source, False))
+        self.drop_area.file_selected.connect(self.source.setText)
+        self.drop_area.invalid_drop.connect(self._failed)
+        import_form.addRow(self.drop_area)
+        import_form.addRow("Selected image", self._path_row(self.source))
+        self.file_details = QLabel("No file selected · original evidence stays read-only")
+        self.file_details.setObjectName("muted")
+        self.file_details.setWordWrap(True)
+        self.source.textChanged.connect(self._file_selected)
+        import_form.addRow(self.file_details)
         self.os_choice = QComboBox()
         self.os_choice.addItems(["Unknown / identify during analysis", "Windows", "Linux", "macOS"])
         import_form.addRow("Image OS", self.os_choice)
@@ -125,17 +152,55 @@ class EvidencePage(QScrollArea):
         live_form = QFormLayout(self.live_fields)
         live_form.setContentsMargins(0, 0, 0, 0)
         live_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        live_form.addRow(SystemCard())
+        live_form.addRow(QLabel("Acquisition tool"))
+        load_env = QPushButton("Load .env…")
+        load_env.setToolTip("Load tool paths; existing environment variables take precedence.")
+        load_env.clicked.connect(self._load_environment)
+        live_form.addRow(load_env)
+        self.tool_choices = QButtonGroup(self)
+        self.configured_tools = available_tools()
+        for index, option in enumerate(self.configured_tools):
+            card = ChoiceCard(f"{option.name} · {option.host}", option.description)
+            card.setEnabled(option.available)
+            card.setToolTip(option.description)
+            self.tool_choices.addButton(card, index)
+            live_form.addRow(card)
+        custom = ChoiceCard(
+            "Choose another executable", "Browse for AVML on Linux or WinPmem mini on Windows"
+        )
+        custom.setEnabled(platform.system() in ("Linux", "Windows"))
+        self.custom_tool_id = len(self.configured_tools)
+        self.tool_choices.addButton(custom, self.custom_tool_id)
+        live_form.addRow(custom)
         self.tool = QLineEdit(str(self.settings.value("intake/tool", "")))
         self.tool.setPlaceholderText("Optional: uses MEMSENTRY_AVML / MEMSENTRY_WINPMEM or PATH")
-        live_form.addRow("Dump tool", self._path_row(self.tool))
+        self.custom_tool_row = self._path_row(self.tool)
+        live_form.addRow(self.custom_tool_row)
+        self.tool.setPlaceholderText("Path to a compatible acquisition executable")
+        self.tool_choices.idClicked.connect(self._tool_selected)
+        selected = next(
+            (i for i, option in enumerate(self.configured_tools) if option.available),
+            self.custom_tool_id,
+        )
+        self.tool_choices.button(selected).setChecked(True)
+        self._tool_selected(selected)
         self.profile = QComboBox()
         self.profile.addItems(
             ["AVML legacy: avml output.lime", "AVML current: avml acquire output.lime"]
         )
-        live_form.addRow("Linux CLI", self.profile)
+        if platform.system() == "Linux":
+            live_form.addRow("AVML version", self.profile)
+        else:
+            self.profile.setParent(self.live_fields)
+            self.profile.hide()
         self.authorized = QCheckBox("I am authorized to capture memory on this host.")
         live_form.addRow(self.authorized)
         form_layout.addWidget(self.live_fields)
+        case_heading = QLabel("Case & storage")
+        case_heading.setObjectName("sectionTitle")
+        form_layout.addWidget(case_heading)
+        form_layout.addLayout(form)
         layout.addWidget(self.form)
 
         actions = QHBoxLayout()
@@ -184,6 +249,52 @@ class EvidencePage(QScrollArea):
         layout.addWidget(browse)
         return row
 
+    def _tool_selected(self, index: int) -> None:
+        self.custom_tool_row.setVisible(index == self.custom_tool_id)
+
+    def _load_environment(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Load acquisition tool configuration",
+            "",
+            "Environment files (.env *.env);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            load_environment_file(path)
+        except (OSError, ValueError) as exc:
+            self._failed(f"Could not load configuration: {exc}")
+            return
+        self.configured_tools = available_tools()
+        for index, option in enumerate(self.configured_tools):
+            card = self.tool_choices.button(index)
+            card.setEnabled(option.available)
+            card.description_label.setText(option.description)
+            card.setToolTip(option.description)
+        selected = next(
+            (i for i, option in enumerate(self.configured_tools) if option.available),
+            self.custom_tool_id,
+        )
+        self.tool_choices.button(selected).setChecked(True)
+        self._tool_selected(selected)
+        self.progress_label.setText(
+            "Configuration loaded. Existing environment variables take precedence."
+        )
+
+    def _file_selected(self, text: str) -> None:
+        try:
+            path = Path(text).expanduser()
+            if not text or not path.is_file():
+                self.file_details.setText("Choose an existing local memory image.")
+                return
+            size = path.stat().st_size
+            self.file_details.setText(
+                f"{size:,} bytes · {size / 1024**3:.2f} GiB · read-only import"
+            )
+        except OSError as exc:
+            self.file_details.setText(f"Cannot read file details: {exc}")
+
     def _browse(self, field: QLineEdit, directory: bool) -> None:
         if directory:
             path = QFileDialog.getExistingDirectory(self, "Choose workspace", field.text())
@@ -218,13 +329,14 @@ class EvidencePage(QScrollArea):
 
     def _mode_changed(self) -> None:
         live = self.mode.currentIndex() == 1
+        self.mode_buttons.button(self.mode.currentIndex()).setChecked(True)
         self.live_fields.setVisible(live)
         self.import_fields.setVisible(not live)
         self.start.setText("Capture and verify" if live else "Import and verify")
         self.mode_hint.setText(
-            "Live capture uses AVML on Linux or WinPmem mini on Windows and requires root / "
-            "Administrator privileges. Capture affects live RAM. Partial captures and tool logs "
-            "are retained on failure. macOS capture is not enabled."
+            "Capture uses system authentication (Polkit / UAC). Only the tool is elevated. "
+            "Cancellation waits for elevated capture to finish. Select a configured tool or browse "
+            "for a compatible executable; arbitrary commands and other dump-tool formats are not supported."
             if live
             else "The original image stays in its current location and is opened read-only. "
             "Two SHA-256 passes establish and verify its baseline."
@@ -249,6 +361,19 @@ class EvidencePage(QScrollArea):
         if not live and not self.source.text().strip():
             self._failed("Select a memory image to import.")
             return
+        tool_path = None
+        if live:
+            tool_index = self.tool_choices.checkedId()
+            if tool_index == self.custom_tool_id:
+                if not self.tool.text().strip():
+                    self._failed("Choose a compatible acquisition executable first.")
+                    return
+                tool_path = Path(self.tool.text().strip()).expanduser()
+            elif 0 <= tool_index < len(self.configured_tools):
+                tool_path = self.configured_tools[tool_index].path
+            if tool_path is None or not tool_path.is_file():
+                self._failed("The selected tool is unavailable. Check its configured path.")
+                return
         os_values = [None, EvidenceOS.WINDOWS, EvidenceOS.LINUX, EvidenceOS.MACOS]
         request = IntakeRequest(
             workspace=Path(self.workspace.text().strip()),
@@ -256,7 +381,7 @@ class EvidencePage(QScrollArea):
             case_name=self.case_name.text().strip(),
             source=None if live else Path(self.source.text().strip()),
             evidence_os=os_values[self.os_choice.currentIndex()],
-            tool_path=Path(self.tool.text().strip()) if self.tool.text().strip() else None,
+            tool_path=tool_path,
             avml_modern=self.profile.currentIndex() == 1,
         )
         self.settings.setValue("intake/workspace", str(request.workspace))
@@ -307,4 +432,7 @@ class EvidencePage(QScrollArea):
         if self.busy:
             self.worker.cancelled.set()
             self.cancel.setEnabled(False)
-            self.progress_label.setText("Cancelling safely…")
+            self.progress_label.setText(
+                "Cancellation requested. Dismiss any authentication prompt. "
+                "An elevated capture already in progress must finish first."
+            )

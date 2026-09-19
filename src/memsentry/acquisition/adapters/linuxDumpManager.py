@@ -19,7 +19,10 @@ class LinuxAvmlAdapter(DumpAdapter):
     tool_name = "AVML"
     target_os = "linux"
 
-    def __init__(self, executable: str | Path | None = None) -> None:
+    def __init__(
+        self, executable: str | Path | None = None, *, acquire_subcommand: bool = False
+    ) -> None:
+        self.acquire_subcommand = acquire_subcommand
         self._executable = configured_executable(executable, "MEMSENTRY_AVML", ("avml",))
 
     @property
@@ -27,7 +30,8 @@ class LinuxAvmlAdapter(DumpAdapter):
         return self._executable
 
     def build_command(self, output_path: Path) -> tuple[str, ...]:
-        return (str(self.executable), str(output_path))
+        prefix = (str(self.executable), "acquire") if self.acquire_subcommand else (str(self.executable),)
+        return (*prefix, str(output_path))
 
     def check_requirements(self) -> None:
         require_platform(self.target_os, self.tool_name)

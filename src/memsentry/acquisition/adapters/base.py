@@ -68,15 +68,17 @@ class DumpAdapter(ABC):
         started_at = datetime.now(UTC)
         started_clock = time.monotonic()
 
+        log_path = output_path.with_suffix(output_path.suffix + ".log")
+        log = log_path.open("xb")
         try:
             process = subprocess.Popen(
                 command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.PIPE,
-                text=True,
+                stdout=log,
+                stderr=subprocess.STDOUT,
                 shell=False,
             )
         except OSError as exc:
+            log.close()
             raise AcquisitionError(f"Could not start {self.tool_name}: {exc}") from exc
 
         try:
@@ -87,19 +89,22 @@ class DumpAdapter(ABC):
                     progress_callback(bytes_written, elapsed)
                 time.sleep(0.25)
 
-            stderr = process.stderr.read().strip() if process.stderr is not None else ""
             if process.returncode != 0:
-                detail = f": {stderr[-1000:]}" if stderr else ""
                 raise AcquisitionError(
-                    f"{self.tool_name} failed with exit code {process.returncode}{detail}"
+                    f"{self.tool_name} failed with exit code {process.returncode}. "
+                    f"See {log_path}. Any partial capture is retained at {output_path}."
                 )
         except BaseException:
             if process.poll() is None:
                 process.terminate()
-                process.wait(timeout=5)
-            if output_path.exists():
-                output_path.unlink()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
             raise
+        finally:
+            log.close()
 
         if not output_path.is_file() or output_path.stat().st_size == 0:
             raise AcquisitionError(f"{self.tool_name} produced no usable memory image")
@@ -111,7 +116,7 @@ class DumpAdapter(ABC):
         return AcquisitionResult(
             output_path=output_path,
             bytes_written=bytes_written,
-            sha256=_sha256(output_path),
+            sha256=_sha256(output_path, progress_callback),
             tool_name=self.tool_name,
             command=command,
             started_at=started_at,
@@ -170,9 +175,11 @@ def require_platform(expected: str, tool_name: str) -> None:
         raise AcquisitionError(f"{tool_name} is only supported on {expected} hosts")
 
 
-def _sha256(path: Path) -> str:
+def _sha256(path: Path, progress_callback: ProgressCallback | None = None) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as evidence_file:
         for chunk in iter(lambda: evidence_file.read(1024 * 1024), b""):
             digest.update(chunk)
+            if progress_callback is not None:
+                progress_callback(evidence_file.tell(), None)
     return digest.hexdigest()

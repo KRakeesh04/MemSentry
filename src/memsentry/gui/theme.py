@@ -36,7 +36,7 @@ def workspace_stylesheet() -> str:
         #workspace QTableWidget {{
             background: {surface}; color: {text}; border: 1px solid {border};
             border-radius: 8px; selection-background-color: {selected};
-            selection-color: {accent};
+            selection-color: {accent}; outline: 0;
         }}
         #workspace QTableWidget::item {{ padding: 8px; border-bottom: 1px solid {border}; }}
         #workspace QHeaderView::section {{
@@ -53,7 +53,21 @@ def workspace_stylesheet() -> str:
             border-radius: 6px; padding: 10px; selection-background-color: {selected};
         }}
         #workspace QLineEdit:focus, #workspace QTextEdit:focus {{ border-color: {accent}; }}
-        #workspace QComboBox QAbstractItemView {{ background: {surface}; color: {text}; }}
+        #workspace QComboBox {{ combobox-popup: 0; }}
+        #workspace QComboBox:focus {{ border-color: {accent}; }}
+        #workspace QComboBox QAbstractItemView {{
+            background: {surface}; color: {text}; border: 1px solid {border};
+            selection-background-color: {selected}; selection-color: {accent};
+            outline: 0; padding: 4px;
+        }}
+        #workspace QComboBox QAbstractItemView::item {{
+            background: {surface}; color: {text}; padding: 8px 12px;
+            min-height: 22px; border: none;
+        }}
+        #workspace QComboBox QAbstractItemView::item:selected {{
+            background: {selected}; color: {accent};
+        }}
+        #workspace QComboBox QAbstractItemView::item:disabled {{ color: {muted}; }}
         #workspace QCheckBox {{ color: {text}; spacing: 8px; }}
         #workspace QPushButton:enabled:hover {{ border-color: {accent}; color: {accent}; }}
         #workspace QPushButton#primaryAction:enabled {{

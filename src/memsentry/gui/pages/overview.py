@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.app.case_service import workspace_database
+from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.intake_widgets import ChoiceCard
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
@@ -85,7 +86,7 @@ class OverviewPage(QScrollArea):
         evidence_layout = QVBoxLayout(evidence_card)
         evidence_layout.setContentsMargins(20, 20, 20, 20)
         evidence_layout.addWidget(label("Memory evidence", "sectionTitle"))
-        self.evidence_choice = QComboBox()
+        self.evidence_choice = ThemedComboBox()
         self.evidence_choice.setPlaceholderText("No evidence registered")
         self.evidence_choice.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
@@ -103,7 +104,7 @@ class OverviewPage(QScrollArea):
         evidence_layout.addWidget(self.hash)
         main.addWidget(evidence_card)
         main.addWidget(label("Analysis history", "sectionTitle"))
-        self.run_choice = QComboBox()
+        self.run_choice = ThemedComboBox()
         self.run_choice.setPlaceholderText("No analysis runs recorded")
         self.run_choice.setSizeAdjustPolicy(
             QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon

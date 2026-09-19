@@ -8,7 +8,6 @@ from PySide6.QtCore import QSettings, QThread, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QComboBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -27,6 +26,7 @@ from memsentry.acquisition.config import load_environment_file
 from memsentry.acquisition.tool_catalog import available_tools
 from memsentry.app.case_service import generate_case_number
 from memsentry.app.intake_service import IntakeRequest, IntakeService
+from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.intake_widgets import ChoiceCard, FileDropArea, SystemCard
 from memsentry.models.evidence import EvidenceOS
 
@@ -82,7 +82,7 @@ class EvidencePage(QScrollArea):
         form_layout = QVBoxLayout(self.form)
         form_layout.setContentsMargins(24, 24, 24, 24)
         form_layout.setSpacing(16)
-        self.mode = QComboBox(self.form)
+        self.mode = ThemedComboBox(self.form)
         self.mode.addItems(["Import memory image", "Live memory acquisition"])
         self.mode.setAccessibleName("Evidence source")
         self.mode.hide()
@@ -117,7 +117,7 @@ class EvidencePage(QScrollArea):
         case_row = QWidget()
         case_layout = QHBoxLayout(case_row)
         case_layout.setContentsMargins(0, 0, 0, 0)
-        self.existing_cases = QComboBox()
+        self.existing_cases = ThemedComboBox()
         self.existing_cases.addItem("Create a new case", None)
         self.existing_cases.currentIndexChanged.connect(self._select_case)
         case_layout.addWidget(self.existing_cases, 1)
@@ -145,7 +145,7 @@ class EvidencePage(QScrollArea):
         self.file_details.setWordWrap(True)
         self.source.textChanged.connect(self._file_selected)
         import_form.addRow(self.file_details)
-        self.os_choice = QComboBox()
+        self.os_choice = ThemedComboBox()
         self.os_choice.addItems(["Unknown / identify during analysis", "Windows", "Linux", "macOS"])
         import_form.addRow("Image OS", self.os_choice)
         form_layout.addWidget(self.import_fields)
@@ -187,7 +187,7 @@ class EvidencePage(QScrollArea):
         )
         self.tool_choices.button(selected).setChecked(True)
         self._tool_selected(selected)
-        self.profile = QComboBox()
+        self.profile = ThemedComboBox()
         self.profile.addItems(
             ["AVML legacy: avml output.lime", "AVML current: avml acquire output.lime"]
         )

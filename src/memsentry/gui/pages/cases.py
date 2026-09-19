@@ -5,7 +5,6 @@ from pathlib import Path
 from PySide6.QtCore import QSettings, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QComboBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -22,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.app.case_service import create_case, generate_case_number, workspace_database
+from memsentry.gui.controls import ThemedComboBox
 from memsentry.storage.repositories.case_repository import CaseRepository
 
 
@@ -63,7 +63,7 @@ class CasesPage(QScrollArea):
         self.search.setClearButtonEnabled(True)
         self.search.textChanged.connect(self._render)
         filters.addWidget(self.search, 1)
-        self.status = QComboBox()
+        self.status = ThemedComboBox()
         self.status.addItems(["All statuses", "Open", "Closed", "Archived"])
         self.status.currentIndexChanged.connect(self._render)
         filters.addWidget(self.status)
@@ -72,6 +72,7 @@ class CasesPage(QScrollArea):
         self.table.setHorizontalHeaderLabels(["Case number", "Name", "Status", "Created (UTC)"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().hide()
+        self.table.setShowGrid(False)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)

@@ -1,6 +1,6 @@
 """Case dashboard showing recorded evidence, runs, and findings."""
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QBoxLayout,
     QComboBox,
@@ -18,10 +18,12 @@ from PySide6.QtWidgets import (
 from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.intake_widgets import ChoiceCard
+from memsentry.gui.workflow_stepper import WorkflowStepper
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
+from memsentry.storage.repositories.workflow_repository import WorkflowRepository
 
 
 def label(text: str, style: str = "") -> QLabel:
@@ -50,6 +52,8 @@ class OverviewPage(QScrollArea):
         self.case = None
         self.workspace_path = ""
         self.database = None
+        self._intake_active = False
+        self._intake_error = None
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         content = QWidget()
@@ -118,21 +122,6 @@ class OverviewPage(QScrollArea):
         main.addWidget(label("Recorded findings", "sectionTitle"))
         self.findings_layout = QVBoxLayout()
         main.addLayout(self.findings_layout)
-        workflow = QFrame()
-        workflow.setObjectName("card")
-        workflow_layout = QVBoxLayout(workflow)
-        workflow_layout.setContentsMargins(20, 20, 20, 20)
-        workflow_layout.addWidget(label("Investigation workflow", "sectionTitle"))
-        self.workflow = label("Create case → Add evidence → Verify → Analyze → Review → Report")
-        workflow_layout.addWidget(self.workflow)
-        workflow_layout.addWidget(
-            label(
-                "Status comes from saved records. Opening this page does not rehash evidence. "
-                "Analysis launch, graph editing, and reporting are not connected to this dashboard yet.",
-                "muted",
-            )
-        )
-        main.addWidget(workflow)
         main.addStretch()
         main_widget = QWidget()
         main_widget.setLayout(main)
@@ -149,9 +138,16 @@ class OverviewPage(QScrollArea):
         recent_layout.addStretch()
         columns.addWidget(recent_card, 1)
         layout.addLayout(columns)
+        self.workflow = WorkflowStepper()
+        layout.addWidget(self.workflow)
         self.setWidget(content)
+        self.workflow_timer = QTimer(self)
+        self.workflow_timer.setInterval(1000)
+        self.workflow_timer.timeout.connect(self._poll_workflow)
+        self.workflow_timer.start()
 
     def open_case(self, workspace, case):
+        self._intake_active = False
         self.workspace_path = workspace
         self.case = case
         self.refresh()
@@ -165,6 +161,8 @@ class OverviewPage(QScrollArea):
         self.recent_card.setMaximumWidth(16777215 if narrow else 280)
 
     def refresh(self):
+        self._intake_active = False
+        self._intake_error = None
         if self.case is None:
             return
         self.error.clear()
@@ -291,15 +289,63 @@ class OverviewPage(QScrollArea):
                     "muted",
                 )
             )
+        self._refresh_workflow()
+
+    def _poll_workflow(self):
+        if self.isVisible() and not self._intake_active:
+            self._refresh_workflow()
+
+    def show_intake_progress(self, message, value):
+        self._intake_active = True
+        self._intake_error = None
+        self.workflow.show_records(self.case, None, None, [])
+        self.workflow.states[1] = "running"
+        if message == "Verifying evidence SHA-256":
+            self.workflow.states[1] = "completed"
+            self.workflow.states[2] = "running"
+            self.workflow.checkpoints[1] = "running"
+        self.workflow.detail.setText(
+            f"New evidence intake · {message}" + (f" · {value}%" if value >= 0 else ""))
+        self.workflow._paint_states()
+
+    def finish_intake_progress(self):
+        if self._intake_error:
+            return
+        self._intake_active = False
+        self._refresh_workflow()
+
+    def show_intake_failure(self, message):
+        if not self._intake_active:
+            return
+        self._intake_error = message
+        index = 2 if self.workflow.states[2] == "running" else 1
+        self.workflow.states[index] = "failed"
+        if index == 2:
+            self.workflow.checkpoints[1] = "failed"
+        self.workflow.detail.setText(f"Evidence intake stopped · {message}")
+        self.workflow._paint_states()
+
+    def _refresh_workflow(self):
         evidence = self.evidence_choice.currentData()
-        verification = evidence.integrity_status if evidence else "Pending"
-        self.workflow.setText(
-            f"{'✓' if self.case else '○'} Case  →  "
-            f"{'✓' if evidence else '○'} Evidence  →  Verification: {verification}\n"
-            f"Analysis: {run.status if run else 'Not started'}  →  "
-            f"Findings: {'Unavailable' if findings_error else str(len(findings)) + ' recorded'}"
-            "  →  Review / Report: Not tracked"
-        )
+        run = self.run_choice.currentData()
+        events = []
+        try:
+            if evidence and self.database:
+                evidence = EvidenceRepository(self.database).get_by_id(evidence.id)
+                if evidence:
+                    if run:
+                        run = AnalysisRunRepository(self.database).get_by_id(run.id)
+                    elif self.isVisible():
+                        runs = AnalysisRunRepository(self.database).list_by_evidence(evidence.id)
+                        if runs:
+                            self._evidence_changed()
+                            return
+                    events = WorkflowRepository(self.database).list_events(
+                        evidence.id, run.id if run else None)
+            self.workflow.show_records(self.case, evidence, run, events)
+        except Exception as exc:
+            self.workflow.show_records(None, None, None, [])
+            self.workflow.detail.setText(f"Workflow status unavailable: {exc}")
 
     def _show_finding(self, finding):
         dialog = QMessageBox(self)

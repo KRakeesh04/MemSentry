@@ -54,6 +54,9 @@ class IntakeWorker(QThread):
 class EvidencePage(QScrollArea):
     status_changed = Signal(str)
     evidence_registered = Signal(object)
+    intake_progress = Signal(str, int)
+    intake_finished = Signal()
+    intake_failed = Signal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -431,6 +434,7 @@ class EvidencePage(QScrollArea):
         self.worker.start()
 
     def _progress(self, message: str, value: int) -> None:
+        self.intake_progress.emit(message, value)
         self.progress_label.setText(message)
         self.progress.setRange(0, 0 if value < 0 else 100)
         if value >= 0:
@@ -447,6 +451,8 @@ class EvidencePage(QScrollArea):
         self.evidence_registered.emit(result)
 
     def _failed(self, message: str) -> None:
+        if self.worker is not None:
+            self.intake_failed.emit(message)
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress_label.setText(message)
@@ -459,6 +465,7 @@ class EvidencePage(QScrollArea):
         self.cancel.setEnabled(False)
         self.worker.deleteLater()
         self.worker = None
+        self.intake_finished.emit()
 
     def _cancel(self) -> None:
         if self.busy:

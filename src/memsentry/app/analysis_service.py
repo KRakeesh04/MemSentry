@@ -6,7 +6,11 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
+from memsentry.app.workflow_service import WorkflowService
 from memsentry.correlation.engine import CorrelationEngine
+from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
+from memsentry.storage.repositories.evidence_repository import EvidenceRepository
+from memsentry.storage.repositories.workflow_repository import WorkflowRepository
 from memsentry.volatility.adapter import VolatilityAdapter
 from memsentry.volatility.plugin_registry import PluginRegistry
 from memsentry.volatility.plugin_runner import PluginRunner
@@ -50,7 +54,30 @@ class AnalysisService:
         plugin against the read-only image, persists the raw output and
         normalized artifacts, and returns a per-plugin result dict.
         """
+        database = self.plugin_runner.plugin_run_repository.database
+        runs = AnalysisRunRepository(database)
+        run = runs.get_by_id(analysis_run_id)
+        if run is None:
+            raise ValueError("Analysis run is not registered")
+        evidence = EvidenceRepository(database).get_by_id(run.evidence_id)
+        if evidence is None or Path(self.dump_path).resolve() != evidence.file_path.resolve():
+            raise ValueError("Analysis path must match the registered evidence")
+        runs.mark_running(analysis_run_id)
+        try:
+            result = WorkflowService(database).execute(
+                analysis_run_id, "analyze",
+                lambda: self._run_plugins(analysis_run_id, plugin_ids, yara_rule_paths))
+        except Exception as exc:
+            runs.mark_failed(analysis_run_id, str(exc))
+            raise
+        runs.mark_completed(analysis_run_id)
+        return result
+
+    def _run_plugins(self, analysis_run_id, plugin_ids, yara_rule_paths):
         selected = self.plugin_registry.validate_selection(self.os_type, plugin_ids)
+        database = self.plugin_runner.plugin_run_repository.database
+        run = AnalysisRunRepository(database).get_by_id(analysis_run_id)
+        events = WorkflowRepository(database)
         results: list[dict[str, Any]] = []
         for plugin in selected:
             results.append(
@@ -61,6 +88,9 @@ class AnalysisService:
                     os_type=self.os_type,
                 )
             )
+            events.record(run.evidence_id, analysis_run_id, "analyze", "operation", "running",
+                          min(99, int(len(results) * 100 / max(len(selected) + bool(yara_rule_paths), 1))),
+                          message=f"Finished plugin {plugin.id}; final SHA-256 check still required")
 
         if yara_rule_paths:
             yara_result = self.yara_scanner.scan(

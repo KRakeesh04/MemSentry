@@ -23,6 +23,7 @@ from memsentry.models.evidence import Evidence, EvidenceCreate, EvidenceOS, Inte
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
+from memsentry.storage.repositories.workflow_repository import WorkflowRepository
 
 
 class IntakeCancelled(RuntimeError):
@@ -229,6 +230,13 @@ class IntakeService:
             check_cancel()
             audit("verified", expected=baseline, actual=verified)
             evidence_repository = EvidenceRepository(database)
+            def record_intake(evidence):
+                events = WorkflowRepository(database)
+                events.record(evidence.id, None, "evidence", "operation", "completed", 100)
+                events.record(evidence.id, None, "evidence", "after", "completed", 100,
+                              baseline, verified, "Intake baseline verified in a second SHA-256 pass")
+                events.record(evidence.id, None, "verify", "operation", "completed", 100)
+
             for registered in evidence_repository.list_by_case(case.id):
                 if registered.file_path.resolve() == source:
                     if registered.sha256 != baseline:
@@ -248,6 +256,7 @@ class IntakeService:
                         registered.id, IntegrityStatus.VERIFIED
                     )
                     audit("existing_evidence_verified", evidence_id=str(evidence.id))
+                    record_intake(evidence)
                     progress("Existing evidence verified", 100)
                     return IntakeResult(evidence, db_path, audit_path)
             evidence = evidence_repository.create(
@@ -261,6 +270,7 @@ class IntakeService:
                 )
             )
             audit("registered", evidence_id=str(evidence.id))
+            record_intake(evidence)
             progress("Evidence verified and registered", 100)
             return IntakeResult(evidence, db_path, audit_path)
         except Exception as exc:

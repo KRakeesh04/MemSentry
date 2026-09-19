@@ -17,6 +17,11 @@ def workspace_stylesheet() -> str:
             background: {background}; border: none;
         }}
         #workspace QLabel {{ color: {text}; background: transparent; }}
+        #workspace QScrollArea#workflowScroll,
+        #workspace QScrollArea#workflowScroll > QWidget,
+        #workspace QScrollArea#workflowScroll > QWidget > QWidget {{
+            background: {surface}; border: none;
+        }}
         #workspace QLabel#pageTitle {{ font-size: 26px; font-weight: bold; }}
         #workspace QLabel#sectionTitle {{ font-size: 16px; font-weight: bold; }}
         #workspace QLabel#metric {{ font-size: 20px; font-weight: bold; }}

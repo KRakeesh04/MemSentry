@@ -7,6 +7,11 @@ from memsentry.acquisition.adapters.base import AcquisitionError
 from memsentry.acquisition.adapters.linuxDumpManager import LinuxAvmlAdapter
 
 
+@pytest.fixture(autouse=True)
+def direct_capture(monkeypatch):
+    monkeypatch.setattr(LinuxAvmlAdapter, "elevation_required", property(lambda _: False))
+
+
 def test_capture_logs_to_file_and_hashes_without_shell(tmp_path, monkeypatch):
     adapter = LinuxAvmlAdapter(tmp_path / "avml")
     monkeypatch.setattr(adapter, "check_requirements", lambda: None)

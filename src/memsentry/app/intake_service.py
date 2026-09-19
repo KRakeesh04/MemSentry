@@ -161,14 +161,28 @@ class IntakeService:
             os_type = request.evidence_os
             if adapter:
                 expected_size = psutil.virtual_memory().total
+                elevated = adapter.elevation_required
 
                 def capture_progress(written: int, elapsed: float | None) -> None:
-                    check_cancel()
+                    # An unprivileged process cannot reliably terminate an elevated tool.
+                    # Defer cancellation until capture returns or hashing starts.
+                    if not elevated or elapsed is None:
+                        check_cancel()
+                    if elevated and cancelled.is_set():
+                        progress(
+                            "Cancellation pending — waiting for elevated capture to finish", -1
+                        )
+                        return
                     stage = (
                         "Hashing captured image"
                         if elapsed is None
                         else "Capturing memory (estimated)"
                     )
+                    if elevated and written == 0 and elapsed is not None:
+                        progress(
+                            "Approve the system authentication prompt · waiting for capture", -1
+                        )
+                        return
                     progress(
                         stage,
                         -1 if elapsed is None else min(99, int(written * 100 / expected_size)),
@@ -179,10 +193,20 @@ class IntakeService:
                     "capture_started",
                     tool=str(adapter.executable),
                     tool_sha256=hash_file(adapter.executable, "Hashing acquisition tool"),
+                    elevation=("polkit" if adapter.target_os == "linux" else "uac")
+                    if elevated
+                    else "already_privileged",
                 )
+                check_cancel()
+                if elevated:
+                    progress(
+                        f"Approve the system authentication prompt · only {adapter.tool_name} is elevated",
+                        -1,
+                    )
                 result = DumpManager(adapter).capture_live(
                     operation, "memory" + suffix, capture_progress
                 )
+                check_cancel()
                 source = result.output_path
                 expected = result.sha256
                 os_type = EvidenceOS(adapter.target_os)

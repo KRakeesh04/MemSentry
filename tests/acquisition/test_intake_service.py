@@ -71,7 +71,10 @@ def test_capture_registers_only_after_hash_verification(request_data, monkeypatc
     from datetime import UTC, datetime
 
     from memsentry.acquisition.adapters.base import AcquisitionResult
+    from memsentry.acquisition.adapters.linuxDumpManager import LinuxAvmlAdapter
     from memsentry.acquisition.dump_manager import DumpManager
+
+    monkeypatch.setattr(LinuxAvmlAdapter, "elevation_required", property(lambda _: False))
 
     monkeypatch.setattr("memsentry.app.intake_service.platform.system", lambda: "Linux")
     monkeypatch.setattr(
@@ -123,3 +126,37 @@ def test_reimport_does_not_replace_registered_baseline(request_data):
     stored = EvidenceRepository(Database(result.database_path)).get_by_id(result.evidence.id)
     assert stored.sha256 == result.evidence.sha256
     assert stored.integrity_status == "modified"
+
+
+def test_cancel_elevated_capture_waits_then_skips_registration(request_data, monkeypatch):
+    from memsentry.acquisition.adapters.linuxDumpManager import LinuxAvmlAdapter
+    from memsentry.acquisition.dump_manager import DumpManager
+
+    cancel = Event()
+    monkeypatch.setattr("memsentry.app.intake_service.platform.system", lambda: "Linux")
+    monkeypatch.setattr(LinuxAvmlAdapter, "check_requirements", lambda _: None)
+    monkeypatch.setattr(LinuxAvmlAdapter, "elevation_required", property(lambda _: True))
+    monkeypatch.setattr(
+        "memsentry.app.intake_service.psutil.virtual_memory",
+        lambda: type("Memory", (), {"total": 1024})(),
+    )
+    updates = []
+
+    def capture(self, directory, filename, callback):
+        cancel.set()
+        callback(100, 1.0)  # Must not try to kill the elevated tool.
+        callback(200, 2.0)
+        callback(200, None)  # Capture ended; hashing may now honour cancellation.
+        pytest.fail("Cancelled capture must not complete hashing")
+
+    monkeypatch.setattr(DumpManager, "capture_live", capture)
+    with pytest.raises(IntakeCancelled):
+        IntakeService().run(
+            replace(request_data, source=None, tool_path=request_data.source),
+            lambda *args: updates.append(args),
+            cancel,
+        )
+    assert any("Cancellation pending" in message for message, _ in updates)
+    audit = next(request_data.workspace.rglob("audit.jsonl")).read_text()
+    assert '"action": "cancelled"' in audit
+    assert '"action": "registered"' not in audit

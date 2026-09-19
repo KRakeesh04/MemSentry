@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from memsentry.acquisition.config import load_environment_file
 from memsentry.acquisition.tool_catalog import available_tools
+from memsentry.app.case_service import generate_case_number
 from memsentry.app.intake_service import IntakeRequest, IntakeService
 from memsentry.gui.intake_widgets import ChoiceCard, FileDropArea, SystemCard
 from memsentry.models.evidence import EvidenceOS
@@ -107,7 +108,8 @@ class EvidencePage(QScrollArea):
         form.setSpacing(12)
         self.workspace = QLineEdit(str(self.settings.value("intake/workspace", "")))
         self.workspace.setPlaceholderText("Folder for case database, captures, and audit records")
-        self.case_number = QLineEdit()
+        self.case_number = QLineEdit(generate_case_number())
+        self.case_number.setToolTip("Suggested automatically; you can enter your own case number.")
         self.case_number.setPlaceholderText("e.g. CASE-2026-001")
         self.case_name = QLineEdit()
         self.case_name.setPlaceholderText("New case name, or the exact name of an existing case")
@@ -309,26 +311,52 @@ class EvidencePage(QScrollArea):
             if directory:
                 self._load_cases()
 
-    def _load_cases(self) -> None:
+    def _load_cases(self) -> bool:
         if not self.workspace.text().strip():
             self._failed("Choose a workspace to load its cases.")
-            return
+            return False
         try:
             cases = IntakeService.list_cases(Path(self.workspace.text().strip()))
         except Exception as exc:
             self._failed(f"Could not load cases: {exc}")
-            return
+            return False
+        selected = self.existing_cases.currentData()
+        number, name = self.case_number.text(), self.case_name.text()
+        self.existing_cases.blockSignals(True)
         self.existing_cases.clear()
         self.existing_cases.addItem("Create a new case", None)
         for case in cases:
             if case.status == "open":
                 self.existing_cases.addItem(f"{case.case_number} · {case.name}", case)
+                if selected and selected.id == case.id:
+                    self.existing_cases.setCurrentIndex(self.existing_cases.count() - 1)
+        self.existing_cases.blockSignals(False)
+        self._select_case()
+        if selected is None:
+            self.case_number.setText(number or generate_case_number())
+            self.case_name.setText(name)
+        return True
+
+    def use_case(self, workspace: str, case) -> bool:
+        """Select an existing open case without altering an active intake job."""
+        if self.busy:
+            return False
+        self.workspace.setText(workspace)
+        if not self._load_cases():
+            return False
+        for index in range(1, self.existing_cases.count()):
+            if self.existing_cases.itemData(index).id == case.id:
+                self.existing_cases.setCurrentIndex(index)
+                self._select_case()
+                return True
+        self._failed("This case is no longer open or available. Refresh the case overview.")
+        return False
 
     def _select_case(self) -> None:
         case = self.existing_cases.currentData()
         self.case_number.setReadOnly(case is not None)
         self.case_name.setReadOnly(case is not None)
-        self.case_number.setText(case.case_number if case else "")
+        self.case_number.setText(case.case_number if case else generate_case_number())
         self.case_name.setText(case.name if case else "")
 
     def _mode_changed(self) -> None:

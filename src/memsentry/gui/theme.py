@@ -21,6 +21,11 @@ def workspace_stylesheet() -> str:
         #workspace QLabel#sectionTitle {{ font-size: 16px; font-weight: bold; }}
         #workspace QLabel#metric {{ font-size: 20px; font-weight: bold; }}
         #workspace QLabel#muted {{ color: {muted}; }}
+        #workspace QLabel#verified {{ color: {"#6FCFA9" if dark else "#18734A"}; }}
+        #workspace QLabel#integrityWarning {{ color: {"#F5B867" if dark else "#955400"}; }}
+        #workspace QPushButton[severity="critical"],
+        #workspace QPushButton[severity="high"] {{ border-left: 3px solid #C65C5C; }}
+        #workspace QPushButton[severity="medium"] {{ border-left: 3px solid #BD8B3D; }}
         #workspace QFrame#card {{
             background: {surface}; border: 1px solid {border}; border-radius: 10px;
         }}

@@ -43,4 +43,20 @@ def workspace_stylesheet() -> str:
             background: {surface}; color: {muted};
         }}
         #workspace QTableWidget:focus {{ border: 1px solid {accent}; }}
+        #workspace QLineEdit, #workspace QComboBox, #workspace QTextEdit {{
+            background: {surface}; color: {text}; border: 1px solid {border};
+            border-radius: 6px; padding: 10px; selection-background-color: {selected};
+        }}
+        #workspace QLineEdit:focus, #workspace QTextEdit:focus {{ border-color: {accent}; }}
+        #workspace QComboBox QAbstractItemView {{ background: {surface}; color: {text}; }}
+        #workspace QCheckBox {{ color: {text}; spacing: 8px; }}
+        #workspace QPushButton:enabled:hover {{ border-color: {accent}; color: {accent}; }}
+        #workspace QPushButton#primaryAction:enabled {{
+            background: {accent}; color: {background}; font-weight: bold;
+        }}
+        #workspace QProgressBar {{
+            background: {surface}; color: {text}; border: 1px solid {border};
+            border-radius: 5px; min-height: 20px; text-align: center;
+        }}
+        #workspace QProgressBar::chunk {{ background: {accent}; border-radius: 4px; }}
     """

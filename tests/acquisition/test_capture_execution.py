@@ -68,9 +68,27 @@ def test_cancel_terminates_tool_and_retains_partial_capture(tmp_path, monkeypatc
 def test_avml_command_profiles(tmp_path):
     executable = tmp_path / "avml"
     output = tmp_path / "capture.lime"
-    assert LinuxAvmlAdapter(executable).build_command(output) == (str(executable), str(output))
-    assert LinuxAvmlAdapter(executable, acquire_subcommand=True).build_command(output) == (
+    assert LinuxAvmlAdapter(executable, acquire_subcommand=False).build_command(output) == (
+        str(executable),
+        str(output),
+    )
+    assert LinuxAvmlAdapter(executable).build_command(output) == (
         str(executable),
         "acquire",
         str(output),
     )
+
+
+def test_legacy_cli_mismatch_reports_correct_profile(tmp_path, monkeypatch):
+    adapter = LinuxAvmlAdapter(tmp_path / "avml", acquire_subcommand=False)
+    monkeypatch.setattr(adapter, "check_requirements", lambda: None)
+
+    def start(command, **kwargs):
+        kwargs["stdout"].write(
+            b"error: unrecognized subcommand '/case/memory.lime'\nUsage: avml <COMMAND>\n"
+        )
+        return type("Process", (), {"poll": lambda self: 2, "returncode": 2})()
+
+    monkeypatch.setattr("memsentry.acquisition.adapters.base.subprocess.Popen", start)
+    with pytest.raises(AcquisitionError, match=r"Select 'AVML current: avml acquire output\.lime'"):
+        adapter.capture(tmp_path / "memory.lime")

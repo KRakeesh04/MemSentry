@@ -22,7 +22,7 @@ class LinuxAvmlAdapter(DumpAdapter):
     target_os = "linux"
 
     def __init__(
-        self, executable: str | Path | None = None, *, acquire_subcommand: bool = False
+        self, executable: str | Path | None = None, *, acquire_subcommand: bool = True
     ) -> None:
         self.acquire_subcommand = acquire_subcommand
         self._executable = configured_executable(executable, "MEMSENTRY_AVML", ("avml",))
@@ -66,3 +66,14 @@ class LinuxAvmlAdapter(DumpAdapter):
         if self.elevation_required:
             return (self._pkexec(), "--disable-internal-agent", *command)
         return command
+
+    def failure_hint(self, log_path: Path) -> str:
+        try:
+            with log_path.open("rb") as stream:
+                stream.seek(max(0, log_path.stat().st_size - 4096))
+                details = stream.read(4096).decode("utf-8", errors="replace").lower()
+        except OSError:
+            return ""
+        if "unrecognized subcommand" in details and "avml <command>" in details:
+            return "Select 'AVML current: avml acquire output.lime' under AVML version and retry. "
+        return ""

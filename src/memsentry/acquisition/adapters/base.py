@@ -62,6 +62,10 @@ class DumpAdapter(ABC):
         """Return the capture command, optionally through a system privilege broker."""
         return self.build_command(output_path)
 
+    def failure_hint(self, log_path: Path) -> str:
+        """Optional adapter-specific guidance for a failed capture."""
+        return ""
+
     def start_process(self, command: tuple[str, ...], log: BinaryIO):
         return subprocess.Popen(
             command,
@@ -123,8 +127,10 @@ class DumpAdapter(ABC):
                         "Ensure Polkit and a desktop authentication agent are installed and running."
                     )
                     raise AcquisitionError(f"{reason} Details: {log_path}")
+                log.flush()
                 raise AcquisitionError(
                     f"{self.tool_name} failed with exit code {process.returncode}. "
+                    f"{self.failure_hint(log_path)}"
                     f"See {log_path}. Any partial capture is retained at {output_path}."
                 )
         except BaseException:

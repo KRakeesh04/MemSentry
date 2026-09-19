@@ -37,7 +37,7 @@ class IntakeRequest:
     source: Path | None = None
     evidence_os: EvidenceOS | None = None
     tool_path: Path | None = None
-    avml_modern: bool = False
+    avml_modern: bool = True
 
 
 @dataclass(frozen=True)

@@ -189,6 +189,10 @@ class EvidencePage(QScrollArea):
         self.profile.addItems(
             ["AVML legacy: avml output.lime", "AVML current: avml acquire output.lime"]
         )
+        self.profile.setCurrentIndex(1)
+        self.profile.setToolTip(
+            "Current AVML requires the acquire subcommand. Choose legacy only for older binaries."
+        )
         if platform.system() == "Linux":
             live_form.addRow("AVML version", self.profile)
         else:

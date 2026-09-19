@@ -32,6 +32,7 @@ def test_pkexec_receives_separate_arguments_and_disables_text_password_prompt(ad
         str(tmp_path / "pkexec"),
         "--disable-internal-agent",
         str(adapter.executable),
+        "acquire",
         str(output),
     )
 

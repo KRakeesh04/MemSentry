@@ -13,6 +13,13 @@ def workspace_stylesheet() -> str:
     )
     return f"""
         QWidget#workspace {{ background: {background}; color: {text}; }}
+        QDialog#analysisDialog {{ background: {surface}; color: {text}; }}
+        #workspace QListWidget {{
+            background: {surface}; color: {text}; border: 1px solid {border};
+            border-radius: 6px; selection-background-color: {selected};
+            selection-color: {accent}; outline: 0;
+        }}
+        #workspace QListWidget::item {{ padding: 10px; }}
         #workspace QScrollArea, #workspace QScrollArea > QWidget > QWidget {{
             background: {background}; border: none;
         }}

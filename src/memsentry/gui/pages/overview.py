@@ -23,6 +23,7 @@ from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRe
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
+from memsentry.storage.repositories.plugin_run_repository import PluginRunRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
 
 
@@ -43,6 +44,7 @@ def clear_layout(layout):
 
 
 class OverviewPage(QScrollArea):
+    analyze_requested = Signal()
     import_requested = Signal()
     cases_requested = Signal()
     case_opened = Signal(str, object)
@@ -54,6 +56,7 @@ class OverviewPage(QScrollArea):
         self.database = None
         self._intake_active = False
         self._intake_error = None
+        self.analysis_busy = False
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         content = QWidget()
@@ -71,6 +74,10 @@ class OverviewPage(QScrollArea):
         self.import_button.setEnabled(False)
         self.import_button.clicked.connect(self.import_requested.emit)
         actions.addWidget(self.import_button)
+        self.analyze_button = QPushButton("Analyze evidence")
+        self.analyze_button.setEnabled(False)
+        self.analyze_button.clicked.connect(self.analyze_requested.emit)
+        actions.addWidget(self.analyze_button)
         cases = QPushButton("Browse cases")
         cases.clicked.connect(self.cases_requested.emit)
         actions.addWidget(cases)
@@ -211,6 +218,9 @@ class OverviewPage(QScrollArea):
 
     def _evidence_changed(self):
         evidence = self.evidence_choice.currentData()
+        self.analyze_button.setEnabled(bool(evidence and self.case and self.case.status == "open"
+                                            and evidence.integrity_status == "verified"
+                                            and not self.analysis_busy))
         self.run_choice.blockSignals(True)
         self.run_choice.clear()
         self.integrity.setObjectName("muted")
@@ -258,6 +268,12 @@ class OverviewPage(QScrollArea):
             )
             try:
                 findings = FindingRepository(self.database).list_by_analysis_run(run.id)
+                plugins = PluginRunRepository(self.database).list_by_analysis_run(run.id)
+                if plugins:
+                    self.run_status.setText(self.run_status.text() + "\n\n" + "\n".join(
+                        f"{plugin.plugin_name}: {plugin.status}"
+                        + (f" — {plugin.error_message}" if plugin.error_message else "")
+                        for plugin in plugins))
             except Exception as exc:
                 findings_error = True
                 self.error.setText(f"Could not load findings: {exc}")

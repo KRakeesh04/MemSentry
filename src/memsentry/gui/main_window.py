@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.gui.branding import application_icon
+from memsentry.gui.cursors import InteractiveCursors
 from memsentry.gui.pages import PLACEHOLDER_PAGES
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.sidebar import Sidebar
@@ -88,6 +89,7 @@ class MainWindow(QMainWindow):
         self.sidebar.currentRowChanged.connect(self.pages.setCurrentIndex)
         self.sidebar.setCurrentRow(0)
         self.setCentralWidget(container)
+        self._interactive_cursors = InteractiveCursors(self)
 
     def _apply_theme(self) -> None:
         self.workspace.setStyleSheet(workspace_stylesheet())

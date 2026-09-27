@@ -41,16 +41,33 @@ class WorkflowRepository:
                 ),
             )
 
-    def list_events(self, evidence_id, run_id=None):
+    def list_events(self, evidence_id=None, run_id=None):
         with self.database.connection() as connection:
             # Old workspaces are readable without migrating them just to display a page.
             if not connection.execute(
                 "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_events'"
             ).fetchone():
                 return []
-            rows = connection.execute(
-                """SELECT * FROM workflow_events WHERE evidence_id = ?
-                AND (analysis_run_id IS NULL OR analysis_run_id = ?) ORDER BY id""",
-                (str(evidence_id), str(run_id) if run_id else None),
-            ).fetchall()
+            if evidence_id is not None:
+                if run_id is not None:
+                    rows = connection.execute(
+                        """SELECT * FROM workflow_events WHERE evidence_id = ?
+                        AND (analysis_run_id IS NULL OR analysis_run_id = ?) ORDER BY id""",
+                        (str(evidence_id), str(run_id)),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """SELECT * FROM workflow_events WHERE evidence_id = ? ORDER BY id""",
+                        (str(evidence_id),),
+                    ).fetchall()
+            else:
+                if run_id is not None:
+                    rows = connection.execute(
+                        """SELECT * FROM workflow_events WHERE analysis_run_id = ? ORDER BY id""",
+                        (str(run_id),),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        """SELECT * FROM workflow_events ORDER BY id"""
+                    ).fetchall()
         return [dict(row) for row in rows]

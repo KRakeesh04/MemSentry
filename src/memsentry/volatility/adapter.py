@@ -25,7 +25,7 @@ from volatility3.framework.configuration import requirements
 
 from memsentry.volatility.os_utils import UnsupportedOperatingSystemError
 from memsentry.volatility.os_utils import normalise_os as _normalise_os_name
-from memsentry.volatility.symbol_manager import SymbolManager
+from memsentry.volatility.symbol_manager import SymbolManager, SymbolManagerError
 
 logger = logging.getLogger(__name__)
 
@@ -89,18 +89,15 @@ class VolatilityAdapter:
     def load_symbols(self, os_type: str) -> Path:
         """Load symbols for the specified OS type.
 
-        Symbols are managed by the :class:`SymbolManager`. This method verifies
-        that symbols for the OS are present and returns the symbol directory so
-        Volatility can resolve the image's struct definitions.
-
-        Raises :class:`VolatilitySymbolError` when no symbols are available.
+        Symbols are managed by the :class:`SymbolManager`. Ensures the symbol
+        directory is configured so Volatility can resolve definitions.
         """
         normalised_os = self._normalise_os(os_type)
-        if not self.symbol_manager.symbols_available(normalised_os):
-            raise VolatilitySymbolError(
-                f"Symbols for OS type '{normalised_os}' are not available."
-            )
-        symbol_path = self.symbol_manager.get_symbol_path(normalised_os)
+        try:
+            symbol_path = self.symbol_manager.ensure_symbols(normalised_os)
+        except SymbolManagerError as error:
+            raise VolatilitySymbolError(str(error)) from error
+
         used_by = self.symbol_manager.symbols_used_by(normalised_os)
         if used_by:
             logger.debug(
@@ -152,6 +149,10 @@ class VolatilityAdapter:
             )
             grid = constructed.run()
             raw_output = self._render_json(grid)
+        except exceptions.UnsatisfiedRequirementException as error:
+            raise VolatilitySymbolError(
+                f"Volatility 3 could not resolve required symbols for '{evidence}': {error}"
+            ) from error
         except exceptions.VolatilityException as error:
             raise VolatilityPluginError(
                 f"Unable to run plugin '{plugin_name}' on '{evidence}': {error}"

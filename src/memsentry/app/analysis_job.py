@@ -53,24 +53,6 @@ def run_analysis(request: AnalysisRequest, started=lambda run: None):
     if any(plugin.parser not in PARSER_SPECS or plugin.experimental for plugin in selected):
         raise ValueError("The selected plugin does not have a supported stable parser.")
     symbol_dir = request.symbol_dir.expanduser().resolve()
-    target_symbols = symbol_dir / request.os_type
-    target_symbols.mkdir(parents=True, exist_ok=True)
-
-    if not any(path.is_file() for path in target_symbols.rglob("*")):
-        for pkg_path in volatility3.symbols.__path__:
-            builtin_os_dir = Path(pkg_path) / request.os_type
-            if builtin_os_dir.is_dir():
-                for file_path in builtin_os_dir.rglob("*"):
-                    if file_path.is_file():
-                        rel = file_path.relative_to(builtin_os_dir)
-                        dest = target_symbols / rel
-                        dest.parent.mkdir(parents=True, exist_ok=True)
-                        shutil.copy2(file_path, dest)
-
-    if not any(path.is_file() for path in target_symbols.rglob("*")):
-        raise ValueError(
-            f"No local {request.os_type} symbols found. Add matching symbols before analysis."
-        )
     if request.yara_rules:
         try:
             import yara  # noqa: F401 -- validate the optional native dependency before starting.

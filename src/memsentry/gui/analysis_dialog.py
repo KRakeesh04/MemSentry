@@ -98,7 +98,7 @@ class AnalysisDialog(QDialog):
         form.addRow("Symbols root", symbol_row)
         layout.addLayout(form)
         hint = QLabel(
-            "The symbols root must contain windows/ or linux/ with matching symbol files."
+            "The symbols root directory where Volatility 3 ISF symbols for windows/ or linux/ are stored or automatically fetched."
         )
         hint.setWordWrap(True)
         hint.setObjectName("muted")
@@ -212,13 +212,6 @@ class AnalysisDialog(QDialog):
             return
         os_type = self.os_choice.currentData()
         root = Path(self.symbols.text()).expanduser()
-        symbols_dir = root / os_type
-        if not symbols_dir.is_dir():
-            try:
-                symbols_dir.mkdir(parents=True, exist_ok=True)
-            except Exception as exc:
-                self.message.setText(f"Could not create symbols folder ({symbols_dir}): {exc}")
-                return
         if self.yara.isChecked() and not self.rule_paths:
             self.message.setText("Select at least one YARA rule file.")
             return

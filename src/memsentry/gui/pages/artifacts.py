@@ -220,28 +220,30 @@ class ArtifactsPage(QScrollArea):
     def _build_table(self, layout: QVBoxLayout) -> None:
         self.table = QTableWidget(0, 6)
         self.table.setHorizontalHeaderLabels([
+            "Captured (UTC)",
             "PID",
             "Type",
             "Name / Key",
-            "Details / Command",
+            "Details",
             "Plugin Source",
-            "Captured (UTC)",
         ])
 
         header = self.table.horizontalHeader()
+
         header.setStretchLastSection(False)
+
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         header.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
 
-        self.table.setColumnWidth(0, 80)
-        self.table.setColumnWidth(1, 110)
-        self.table.setColumnWidth(2, 160)
-        self.table.setColumnWidth(4, 160)
-        self.table.setColumnWidth(5, 180)
+        self.table.setColumnWidth(0, 195)  # Timestamp
+        self.table.setColumnWidth(1, 75)   # PID
+        self.table.setColumnWidth(2, 150)  # Type
+        self.table.setColumnWidth(3, 150)  # Name
+        self.table.setColumnWidth(5, 120)  # Plugin Source
 
         self.table.verticalHeader().hide()
         self.table.setShowGrid(False)
@@ -448,27 +450,51 @@ class ArtifactsPage(QScrollArea):
             name, details, source = _extract_artifact_summary(artifact)
             created_str = self._format_timestamp(artifact.created_at)
 
-            pid_item = SortableTableItem(pid_str, sort_key=pid_sort)
-            type_item = SortableTableItem(artifact.artifact_type, sort_key=artifact.artifact_type)
-            name_item = SortableTableItem(name, sort_key=name)
-            details_item = SortableTableItem(details, sort_key=details)
-            source_item = SortableTableItem(source, sort_key=source)
-            created_item = SortableTableItem(created_str, sort_key=str(artifact.created_at))
+            created_item = SortableTableItem(
+                created_str,
+                sort_key=str(artifact.created_at)
+            )
+
+            pid_item = SortableTableItem(
+                pid_str,
+                sort_key=pid_sort
+            )
+
+            type_item = SortableTableItem(
+                artifact.artifact_type,
+                sort_key=artifact.artifact_type
+            )
+
+            name_item = SortableTableItem(
+                name,
+                sort_key=name
+            )
+
+            details_item = SortableTableItem(
+                details,
+                sort_key=details
+            )
+
+            source_item = SortableTableItem(
+                source,
+                sort_key=source
+            )
 
             pid_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             type_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
+
             details_item.setToolTip(details)
             created_item.setToolTip(str(artifact.created_at))
 
-            pid_item.setData(Qt.ItemDataRole.UserRole, artifact)
+            created_item.setData(Qt.ItemDataRole.UserRole, artifact)
 
-            self.table.setItem(row, 0, pid_item)
-            self.table.setItem(row, 1, type_item)
-            self.table.setItem(row, 2, name_item)
-            self.table.setItem(row, 3, details_item)
-            self.table.setItem(row, 4, source_item)
-            self.table.setItem(row, 5, created_item)
+            self.table.setItem(row, 0, created_item)
+            self.table.setItem(row, 1, pid_item)
+            self.table.setItem(row, 2, type_item)
+            self.table.setItem(row, 3, name_item)
+            self.table.setItem(row, 4, details_item)
+            self.table.setItem(row, 5, source_item)
 
         self.table.setSortingEnabled(sorting_was_enabled)
         self._update_empty_state_and_kpis(artifacts)

@@ -105,6 +105,17 @@ class ArtifactRepository:
             ).fetchall()
         return [self._row_to_artifact(row) for row in rows]
 
+    def list_all(self) -> list[Artifact]:
+        with self.database.connection() as connection:
+            if not connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='artifacts'"
+            ).fetchone():
+                return []
+            rows = connection.execute(
+                "SELECT * FROM artifacts ORDER BY created_at, id"
+            ).fetchall()
+        return [self._row_to_artifact(row) for row in rows]
+
     def _list(self, column: str, value: UUID) -> list[Artifact]:
         with self.database.connection() as connection:
             rows = connection.execute(

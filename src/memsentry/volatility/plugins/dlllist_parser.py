@@ -54,7 +54,7 @@ class DlllistParser:
     ) -> DlllistParseResult:
         os_type = normalise_os(os_type, self._SUPPORTED_OS)
         modules = []
-        warnings = []
+        warnings: list[str] = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "dlllist")):
             values = normalise_values(row)
             pid = optional_pid(values, ("pid", "processid"), "dlllist", number, warnings)

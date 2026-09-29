@@ -159,7 +159,8 @@ class YaraScanner:
     def _compile(self, rules: list[Path]) -> Any:
         yara = self._yara_module or _import_yara()
         try:
-            return yara.compile(filepaths={path.name: str(path) for path in rules})
+            return yara.compile(filepaths={f"rules_{index}_{path.name}": str(path)
+                                          for index, path in enumerate(rules)})
         except Exception as error:
             raise YaraRuleError(f"Could not compile YARA rules: {error}") from error
 
@@ -167,7 +168,14 @@ class YaraScanner:
     def _normalize_match(match: Any) -> YaraMatch:
         strings: list[dict[str, Any]] = []
         for item in getattr(match, "strings", ()):
-            if hasattr(item, "offset"):
+            if hasattr(item, "instances"):
+                for instance in item.instances:
+                    strings.append({
+                        "offset": int(instance.offset), "identifier": str(item.identifier),
+                        "data_hex": bytes(instance.matched_data).hex(),
+                    })
+                continue
+            elif hasattr(item, "offset"):
                 offset, identifier, data = item.offset, item.identifier, item.data
             else:
                 offset, identifier, data = item

@@ -56,7 +56,7 @@ class NetscanParser:
     ) -> NetscanParseResult:
         os_type = normalise_os(os_type, self._SUPPORTED_OS)
         connections = []
-        warnings = []
+        warnings: list[str] = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "netscan")):
             values = normalise_values(row)
             pid = optional_pid(values, ("pid", "ownerpid"), "netscan", number, warnings)

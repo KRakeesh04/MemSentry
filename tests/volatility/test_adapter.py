@@ -9,10 +9,51 @@ from memsentry.volatility.adapter import (
     EvidenceNotFoundError,
     VolatilityAdapter,
     VolatilityAdapterError,
-    VolatilitySymbolError,
     VolatilityUnsupportedOSError,
 )
 from memsentry.volatility.symbol_manager import SymbolManager
+
+
+def test_symbol_manager_ensure_symbols_returns_path_when_available(tmp_path: Path) -> None:
+    manager = SymbolManager(str(tmp_path / "symbols"))
+    symbol_dir = manager.get_symbol_path("windows")
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+    (symbol_dir / "kernel.json").touch()
+
+    path = manager.ensure_symbols("windows")
+    assert path == symbol_dir
+    assert manager.symbols_available("windows")
+
+
+def test_symbol_manager_ensure_symbols_returns_path_even_when_empty(tmp_path: Path) -> None:
+    # ensure_symbols configures Volatility's symbol path and returns the directory;
+    # it no longer raises when the directory is empty — resolution happens at plugin
+    # execution time via Volatility 3 automagics (matching CLI behaviour).
+    manager = SymbolManager(str(tmp_path / "symbols"))
+    path = manager.ensure_symbols("windows")
+    assert path == manager.get_symbol_path("windows")
+    assert path.is_dir()
+
+
+def test_symbol_manager_symbols_used_by_lists_symbol_tables(tmp_path: Path) -> None:
+    manager = SymbolManager(str(tmp_path / "symbols"))
+    symbol_dir = manager.get_symbol_path("linux")
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+    (symbol_dir / "kernel.json").touch()
+    (symbol_dir / "userspace.json").touch()
+
+    assert set(manager.symbols_used_by("linux")) == {"kernel", "userspace"}
+    assert manager.symbols_used_by("mac") == []
+    assert not manager.symbols_available("mac")
+
+
+def test_symbol_manager_normalises_os_and_rejects_unknown(tmp_path: Path) -> None:
+    manager = SymbolManager(str(tmp_path / "symbols"))
+    assert manager.get_symbol_path("WINDOWS") == manager.symbol_dir / "windows"
+    with pytest.raises(ValueError):
+        manager.get_symbol_path("android")
+    assert manager.get_status() == {"windows": False, "linux": False, "mac": False}
+
 
 
 def _adapter(tmp_path: Path, with_symbols: bool = True) -> VolatilityAdapter:
@@ -30,10 +71,11 @@ def test_initialize_rejects_unsupported_os(tmp_path: Path) -> None:
         adapter.initialize("android")
 
 
-def test_initialize_requires_available_symbols(tmp_path: Path) -> None:
+def test_initialize_succeeds_without_local_symbol_files(tmp_path: Path) -> None:
+    # initialize no longer fails when no ISF files are present locally;
+    # Volatility 3 automagics will resolve symbols at plugin-run time.
     adapter = _adapter(tmp_path, with_symbols=False)
-    with pytest.raises(VolatilitySymbolError):
-        adapter.initialize("linux")
+    adapter.initialize("linux")  # should not raise
 
 
 def test_load_symbols_returns_symbol_path_when_available(tmp_path: Path) -> None:
@@ -43,10 +85,13 @@ def test_load_symbols_returns_symbol_path_when_available(tmp_path: Path) -> None
     assert path.name == "windows"
 
 
-def test_load_symbols_raises_when_unavailable(tmp_path: Path) -> None:
+def test_load_symbols_returns_directory_path_when_empty(tmp_path: Path) -> None:
+    # load_symbols returns the OS symbol directory even when no files are present;
+    # an UnsatisfiedRequirementException from Volatility is the actual error path.
     adapter = _adapter(tmp_path, with_symbols=False)
-    with pytest.raises(VolatilitySymbolError):
-        adapter.load_symbols("windows")
+    path = adapter.load_symbols("windows")
+    assert path.is_dir()
+    assert path.name == "windows"
 
 
 def test_run_plugin_requires_initialization(tmp_path: Path) -> None:
@@ -149,21 +194,21 @@ def test_render_json_outputs_valid_list(tmp_path: Path, monkeypatch) -> None:
     assert json.loads(output) == [{"PID": 1}]
 
 
-def test_symbol_manager_symbols_used_by_lists_symbol_tables(tmp_path: Path) -> None:
+def test_symbol_manager_symbols_used_by_lists_windows_tables(tmp_path: Path) -> None:
     manager = SymbolManager(str(tmp_path / "symbols"))
-    symbol_dir = manager.get_symbol_path("linux")
+    symbol_dir = manager.get_symbol_path("windows")
     symbol_dir.mkdir(parents=True, exist_ok=True)
     (symbol_dir / "kernel.json").touch()
     (symbol_dir / "userspace.json").touch()
 
-    assert set(manager.symbols_used_by("linux")) == {"kernel", "userspace"}
+    assert set(manager.symbols_used_by("windows")) == {"kernel", "userspace"}
     assert manager.symbols_used_by("mac") == []
     assert not manager.symbols_available("mac")
 
 
-def test_symbol_manager_normalises_os_and_rejects_unknown(tmp_path: Path) -> None:
+def test_symbol_manager_normalises_linux_and_rejects_unknown(tmp_path: Path) -> None:
     manager = SymbolManager(str(tmp_path / "symbols"))
-    assert manager.get_symbol_path("WINDOWS") == manager.symbol_dir / "windows"
+    assert manager.get_symbol_path("LINUX") == manager.symbol_dir / "linux"
     with pytest.raises(ValueError):
         manager.get_symbol_path("android")
     assert manager.get_status() == {"windows": False, "linux": False, "mac": False}

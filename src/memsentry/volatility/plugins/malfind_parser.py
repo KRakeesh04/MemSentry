@@ -53,7 +53,7 @@ class MalfindParser:
     ) -> MalfindParseResult:
         normalise_os(os_type, self._SUPPORTED_OS)
         regions = []
-        warnings = []
+        warnings: list[str] = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "malfind")):
             values = normalise_values(row)
             pid = required_pid(values, ("pid",), "malfind", number, warnings)

@@ -7,7 +7,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import volatility3.plugins
 from volatility3 import framework
@@ -25,7 +25,7 @@ from volatility3.framework.configuration import requirements
 
 from memsentry.volatility.os_utils import UnsupportedOperatingSystemError
 from memsentry.volatility.os_utils import normalise_os as _normalise_os_name
-from memsentry.volatility.symbol_manager import SymbolManager
+from memsentry.volatility.symbol_manager import SymbolManager, SymbolManagerError
 
 logger = logging.getLogger(__name__)
 
@@ -89,18 +89,15 @@ class VolatilityAdapter:
     def load_symbols(self, os_type: str) -> Path:
         """Load symbols for the specified OS type.
 
-        Symbols are managed by the :class:`SymbolManager`. This method verifies
-        that symbols for the OS are present and returns the symbol directory so
-        Volatility can resolve the image's struct definitions.
-
-        Raises :class:`VolatilitySymbolError` when no symbols are available.
+        Symbols are managed by the :class:`SymbolManager`. Ensures the symbol
+        directory is configured so Volatility can resolve definitions.
         """
         normalised_os = self._normalise_os(os_type)
-        if not self.symbol_manager.symbols_available(normalised_os):
-            raise VolatilitySymbolError(
-                f"Symbols for OS type '{normalised_os}' are not available."
-            )
-        symbol_path = self.symbol_manager.get_symbol_path(normalised_os)
+        try:
+            symbol_path = self.symbol_manager.ensure_symbols(normalised_os)
+        except SymbolManagerError as error:
+            raise VolatilitySymbolError(str(error)) from error
+
         used_by = self.symbol_manager.symbols_used_by(normalised_os)
         if used_by:
             logger.debug(
@@ -152,6 +149,10 @@ class VolatilityAdapter:
             )
             grid = constructed.run()
             raw_output = self._render_json(grid)
+        except exceptions.UnsatisfiedRequirementException as error:
+            raise VolatilitySymbolError(
+                f"Volatility 3 could not resolve required symbols for '{evidence}': {error}"
+            ) from error
         except exceptions.VolatilityException as error:
             raise VolatilityPluginError(
                 f"Unable to run plugin '{plugin_name}' on '{evidence}': {error}"
@@ -180,7 +181,7 @@ class VolatilityAdapter:
             context.config["automagic.LayerStacker.stackers"] = stacker.choose_os_stackers(
                 plugin_class
             )
-        return automagics
+        return cast(list[Any], automagics)
 
     @staticmethod
     def _render_json(grid: Any) -> str:
@@ -201,7 +202,7 @@ class VolatilityAdapter:
 
         if output_dir is None:
 
-            class NullFileHandler(io.BytesIO, interfaces.plugins.FileHandlerInterface):
+            class NullFileHandler(io.BytesIO, interfaces.plugins.FileHandlerInterface):  # type: ignore[misc]  # Volatility has no type stubs.
                 def __init__(self, filename: str) -> None:
                     io.BytesIO.__init__(self)
                     interfaces.plugins.FileHandlerInterface.__init__(self, filename)
@@ -215,7 +216,7 @@ class VolatilityAdapter:
             return NullFileHandler
 
         class DirectoryFileHandler(
-            io.BytesIO, interfaces.plugins.FileHandlerInterface
+            io.BytesIO, interfaces.plugins.FileHandlerInterface  # type: ignore[misc]  # Volatility has no type stubs.
         ):
             def __init__(self, filename: str) -> None:
                 io.BytesIO.__init__(self)
@@ -248,7 +249,7 @@ class VolatilityAdapter:
 
     def _resolve_plugin(self, plugin_name: str) -> type[Any]:
         try:
-            return framework.list_plugins()[plugin_name]
+            return cast(type[Any], framework.list_plugins()[plugin_name])
         except KeyError as error:
             raise VolatilityPluginError(
                 f"Plugin '{plugin_name}' is not installed or not discoverable."

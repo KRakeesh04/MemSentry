@@ -116,3 +116,4 @@ PROJECT_CONTEXT.md
 *.dmp
 tests/memory_dumps
 tests/correlation/test_output/*
+app_test_outputs

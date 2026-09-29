@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 
-def create_placeholder(name: str, content: tuple) -> QScrollArea:
+def create_placeholder(name: str, content: tuple[str, list[tuple[str, str]], str, list[str], list[list[str]], str | None]) -> QScrollArea:
     """Build a scrollable page; no preview action executes forensic work."""
     description, metrics, section, headers, rows, action = content
     scroll = QScrollArea()

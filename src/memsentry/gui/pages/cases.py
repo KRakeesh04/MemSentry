@@ -22,16 +22,17 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.case_service import create_case, generate_case_number, workspace_database
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.models.case import Case
 from memsentry.storage.repositories.case_repository import CaseRepository
 
 
 class CasesPage(QScrollArea):
     case_opened = Signal(str, object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.cases = []
-        self.visible_cases = []
+        self.cases: list[Case] = []
+        self.visible_cases: list[Case] = []
         self.loaded_workspace = ""
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -117,18 +118,18 @@ class CasesPage(QScrollArea):
         else:
             self.message.setText("Choose a workspace to see saved cases.")
 
-    def _workspace_edited(self):
+    def _workspace_edited(self) -> None:
         self.cases = []
         self.loaded_workspace = ""
         self._render()
 
-    def _browse(self):
+    def _browse(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose workspace", self.workspace.text())
         if path:
             self.workspace.setText(path)
             self.refresh()
 
-    def refresh(self):
+    def refresh(self) -> None:
         self.cases = []
         self.loaded_workspace = ""
         try:
@@ -143,7 +144,7 @@ class CasesPage(QScrollArea):
             self._render()
             self.message.setText(f"Could not load cases: {exc}")
 
-    def _render(self):
+    def _render(self) -> None:
         query = self.search.text().strip().casefold()
         status = self.status.currentText().lower()
         self.visible_cases = [
@@ -174,15 +175,15 @@ class CasesPage(QScrollArea):
         )
         self._selection_changed()
 
-    def _selection_changed(self):
+    def _selection_changed(self) -> None:
         self.open_button.setEnabled(bool(self.table.selectedItems()))
 
-    def open_selected(self, *_):
+    def open_selected(self, *_: object) -> None:
         row = self.table.currentRow()
         if self.table.selectedItems() and 0 <= row < len(self.visible_cases):
             self.case_opened.emit(self.loaded_workspace, self.visible_cases[row])
 
-    def _create(self):
+    def _create(self) -> None:
         try:
             case = create_case(
                 self.workspace.text(), self.number.text(), self.name.text(), self.description.text()
@@ -197,5 +198,5 @@ class CasesPage(QScrollArea):
         self.case_opened.emit(self.loaded_workspace, case)
 
 
-def create_page():
+def create_page() -> CasesPage:
     return CasesPage()

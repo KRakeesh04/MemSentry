@@ -4,7 +4,7 @@ import importlib.util
 import os
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -18,10 +18,12 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QVBoxLayout,
+    QWidget,
 )
 
 from memsentry.app.analysis_job import AnalysisRequest, run_analysis
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.models.evidence import Evidence
 from memsentry.volatility.plugin_registry import PluginRegistry
 from memsentry.volatility.plugin_runner import PARSER_SPECS
 
@@ -30,7 +32,7 @@ class CatalogWorker(QThread):
     ready = Signal(object)
     failed = Signal(str)
 
-    def run(self):
+    def run(self) -> None:
         try:
             self.ready.emit(PluginRegistry())
         except Exception as exc:
@@ -42,11 +44,11 @@ class AnalysisWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, request, parent=None):
+    def __init__(self, request: AnalysisRequest, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self.request = request
 
-    def run(self):
+    def run(self) -> None:
         try:
             self.succeeded.emit(run_analysis(self.request, self.started_run.emit))
         except Exception as exc:
@@ -54,14 +56,14 @@ class AnalysisWorker(QThread):
 
 
 class AnalysisDialog(QDialog):
-    def __init__(self, workspace, evidence, parent=None):
+    def __init__(self, workspace: str, evidence: Evidence, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("analysisDialog")
         self.workspace = workspace
         self.evidence = evidence
-        self.registry = None
-        self.request = None
-        self.rule_paths = []
+        self.registry: PluginRegistry | None = None
+        self.request: AnalysisRequest | None = None
+        self.rule_paths: list[Path] = []
         self.setWindowTitle("Analyze memory evidence")
         self.resize(680, 690)
         layout = QVBoxLayout(self)
@@ -149,11 +151,11 @@ class AnalysisDialog(QDialog):
         self.catalog.failed.connect(self.message.setText)
         self.catalog.start()
 
-    def _catalog_ready(self, registry):
+    def _catalog_ready(self, registry: PluginRegistry) -> None:
         self.registry = registry
         self._populate()
 
-    def _populate(self):
+    def _populate(self) -> None:
         self.plugins.clear()
         os_type = self.os_choice.currentData()
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
@@ -187,12 +189,12 @@ class AnalysisDialog(QDialog):
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(available))
 
-    def _symbols(self):
+    def _symbols(self) -> None:
         path = QFileDialog.getExistingDirectory(self, "Choose symbols root", self.symbols.text())
         if path:
             self.symbols.setText(path)
 
-    def _rules(self):
+    def _rules(self) -> None:
         paths, _ = QFileDialog.getOpenFileNames(
             self, "Choose approved YARA rules", "", "YARA rules (*.yar *.yara)"
         )
@@ -201,7 +203,7 @@ class AnalysisDialog(QDialog):
             self.rules.setText("; ".join(paths))
             self.yara.setChecked(True)
 
-    def _accept(self):
+    def _accept(self) -> None:
         ids = tuple(
             self.plugins.item(index).data(Qt.ItemDataRole.UserRole)
             for index in range(self.plugins.count())
@@ -226,7 +228,7 @@ class AnalysisDialog(QDialog):
         if not self.catalog.isRunning():
             self.accept()
 
-    def reject(self):
+    def reject(self) -> None:
         if self.catalog.isRunning():
             self.message.setText("Please wait for plugin discovery to finish before closing.")
             return

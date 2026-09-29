@@ -7,6 +7,7 @@ from typing import BinaryIO
 
 from memsentry.acquisition.adapters.base import (
     AcquisitionError,
+    CaptureProcess,
     DumpAdapter,
     configured_executable,
     require_executable,
@@ -45,7 +46,7 @@ class WindowsWinPmemAdapter(DumpAdapter):
     def elevation_required(self) -> bool:
         return not is_administrator()
 
-    def start_process(self, command: tuple[str, ...], log: BinaryIO):
+    def start_process(self, command: tuple[str, ...], log: BinaryIO) -> CaptureProcess:
         if self.elevation_required:
             return ElevatedWindowsProcess(command, log)
         return super().start_process(command, log)

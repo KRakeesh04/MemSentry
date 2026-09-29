@@ -6,7 +6,7 @@ import ctypes
 import os
 import subprocess
 from pathlib import Path
-from typing import BinaryIO
+from typing import BinaryIO, cast
 
 from memsentry.acquisition.adapters.base import AcquisitionError
 
@@ -39,9 +39,9 @@ class WindowsAPI:
     def __init__(self) -> None:
         if os.name != "nt":
             raise AcquisitionError("Windows UAC is only available on Windows.")
-        self.shell = ctypes.WinDLL("shell32", use_last_error=True)
-        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)
-        self.ole = ctypes.WinDLL("ole32", use_last_error=True)
+        self.shell = ctypes.WinDLL("shell32", use_last_error=True)  # type: ignore[attr-defined]  # Windows-only ctypes API.
+        self.kernel = ctypes.WinDLL("kernel32", use_last_error=True)  # type: ignore[attr-defined]  # Windows-only ctypes API.
+        self.ole = ctypes.WinDLL("ole32", use_last_error=True)  # type: ignore[attr-defined]  # Windows-only ctypes API.
         self.shell.ShellExecuteExW.argtypes = [ctypes.POINTER(ShellExecuteInfo)]
         self.shell.ShellExecuteExW.restype = ctypes.c_int
         self.shell.IsUserAnAdmin.argtypes = []
@@ -75,7 +75,7 @@ class WindowsAPI:
             )
         try:
             if not self.shell.ShellExecuteExW(ctypes.byref(info)):
-                code = ctypes.get_last_error()
+                code = ctypes.get_last_error()  # type: ignore[attr-defined]  # Windows-only ctypes API.
                 if code == 1223:
                     raise AcquisitionError(
                         "Windows UAC request was cancelled. No evidence was registered."
@@ -85,13 +85,13 @@ class WindowsAPI:
                         "Windows denied elevation. Ask an administrator to check UAC policy and tool access."
                     )
                 raise AcquisitionError(
-                    f"Could not elevate WinPmem: Windows error {code} ({ctypes.FormatError(code).strip()})."
+                    f"Could not elevate WinPmem: Windows error {code} ({ctypes.FormatError(code).strip()})."  # type: ignore[attr-defined]  # Windows-only ctypes API.
                 )
             if not info.hProcess:
                 raise AcquisitionError(
                     "Windows did not return a capture process handle; capture cannot be monitored."
                 )
-            return info.hProcess
+            return cast(int, info.hProcess)
         finally:
             if initialized >= 0:
                 self.ole.CoUninitialize()
@@ -145,6 +145,8 @@ class ElevatedWindowsProcess:
     def wait(self, timeout: float | None = None) -> int:
         code = self._wait(0xFFFFFFFF if timeout is None else int(timeout * 1000))
         if code is None:
+            if timeout is None:
+                raise AcquisitionError("Windows returned a timeout for an indefinite process wait.")
             raise subprocess.TimeoutExpired("WinPmem", timeout)
         return code
 

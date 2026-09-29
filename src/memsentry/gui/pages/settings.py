@@ -1,5 +1,7 @@
 """Settings page preview."""
 
+from PySide6.QtWidgets import QScrollArea
+
 from memsentry.gui.pages.placeholder import create_placeholder
 
 CONTENT = (
@@ -16,5 +18,5 @@ CONTENT = (
 )
 
 
-def create_page():
+def create_page() -> QScrollArea:
     return create_placeholder("Settings", CONTENT)

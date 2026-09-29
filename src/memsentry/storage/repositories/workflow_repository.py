@@ -1,26 +1,28 @@
 """Append-only operation and integrity checkpoint history."""
 
 from datetime import UTC, datetime
+from typing import Any
+from uuid import UUID
 
 from memsentry.storage.database import Database
 
 
 class WorkflowRepository:
-    def __init__(self, database: Database):
+    def __init__(self, database: Database) -> None:
         self.database = database
 
     def record(
         self,
-        evidence_id,
-        run_id,
-        stage,
-        phase,
-        status,
-        progress=0,
-        expected=None,
-        actual=None,
-        message="",
-    ):
+        evidence_id: UUID | str,
+        run_id: UUID | str | None,
+        stage: str,
+        phase: str,
+        status: str,
+        progress: int = 0,
+        expected: str | None = None,
+        actual: str | None = None,
+        message: str = "",
+    ) -> None:
         with self.database.transaction() as connection:
             connection.execute(
                 """INSERT INTO workflow_events
@@ -41,7 +43,9 @@ class WorkflowRepository:
                 ),
             )
 
-    def list_events(self, evidence_id=None, run_id=None):
+    def list_events(
+        self, evidence_id: UUID | str | None = None, run_id: UUID | str | None = None
+    ) -> list[dict[str, Any]]:
         with self.database.connection() as connection:
             # Old workspaces are readable without migrating them just to display a page.
             if not connection.execute(

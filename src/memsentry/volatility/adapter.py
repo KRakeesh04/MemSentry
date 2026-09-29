@@ -7,7 +7,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import volatility3.plugins
 from volatility3 import framework
@@ -181,7 +181,7 @@ class VolatilityAdapter:
             context.config["automagic.LayerStacker.stackers"] = stacker.choose_os_stackers(
                 plugin_class
             )
-        return automagics
+        return cast(list[Any], automagics)
 
     @staticmethod
     def _render_json(grid: Any) -> str:
@@ -202,7 +202,7 @@ class VolatilityAdapter:
 
         if output_dir is None:
 
-            class NullFileHandler(io.BytesIO, interfaces.plugins.FileHandlerInterface):
+            class NullFileHandler(io.BytesIO, interfaces.plugins.FileHandlerInterface):  # type: ignore[misc]  # Volatility has no type stubs.
                 def __init__(self, filename: str) -> None:
                     io.BytesIO.__init__(self)
                     interfaces.plugins.FileHandlerInterface.__init__(self, filename)
@@ -216,7 +216,7 @@ class VolatilityAdapter:
             return NullFileHandler
 
         class DirectoryFileHandler(
-            io.BytesIO, interfaces.plugins.FileHandlerInterface
+            io.BytesIO, interfaces.plugins.FileHandlerInterface  # type: ignore[misc]  # Volatility has no type stubs.
         ):
             def __init__(self, filename: str) -> None:
                 io.BytesIO.__init__(self)
@@ -249,7 +249,7 @@ class VolatilityAdapter:
 
     def _resolve_plugin(self, plugin_name: str) -> type[Any]:
         try:
-            return framework.list_plugins()[plugin_name]
+            return cast(type[Any], framework.list_plugins()[plugin_name])
         except KeyError as error:
             raise VolatilityPluginError(
                 f"Plugin '{plugin_name}' is not installed or not discoverable."

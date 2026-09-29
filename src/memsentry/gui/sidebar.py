@@ -53,7 +53,9 @@ class Sidebar(QWidget):
                 navigation_layout.addWidget(button)
         navigation_layout.addStretch()
         self.buttons.idClicked.connect(self.setCurrentRow)
-        QApplication.instance().paletteChanged.connect(self._apply_theme)
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        app.paletteChanged.connect(self._apply_theme)
         self._apply_theme()
 
     def setCurrentRow(self, index: int) -> None:

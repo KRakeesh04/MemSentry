@@ -10,7 +10,9 @@ class InteractiveCursors(QObject):
     def __init__(self, window: QWidget) -> None:
         super().__init__(window)
         self.window = window
-        QApplication.instance().installEventFilter(self)
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        app.installEventFilter(self)
         for widget in window.findChildren(QWidget):
             self._update(widget)
 

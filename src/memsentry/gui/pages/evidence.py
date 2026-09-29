@@ -4,7 +4,7 @@ import platform
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QSettings, QThread, Signal
+from PySide6.QtCore import QObject, QSettings, QThread, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -25,9 +25,10 @@ from PySide6.QtWidgets import (
 from memsentry.acquisition.config import load_environment_file
 from memsentry.acquisition.tool_catalog import available_tools
 from memsentry.app.case_service import generate_case_number
-from memsentry.app.intake_service import IntakeRequest, IntakeService
+from memsentry.app.intake_service import IntakeRequest, IntakeResult, IntakeService
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.intake_widgets import ChoiceCard, FileDropArea, SystemCard
+from memsentry.models.case import Case
 from memsentry.models.evidence import EvidenceOS
 
 
@@ -36,7 +37,7 @@ class IntakeWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, request: IntakeRequest, parent=None, service=None) -> None:
+    def __init__(self, request: IntakeRequest, parent: QObject | None = None, service: IntakeService | None = None) -> None:
         super().__init__(parent)
         self.request = request
         self.service = service or IntakeService()
@@ -58,9 +59,9 @@ class EvidencePage(QScrollArea):
     intake_finished = Signal()
     intake_failed = Signal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.worker = None
+        self.worker: IntakeWorker | None = None
         self.setAccessibleName("Memory evidence intake")
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -278,6 +279,8 @@ class EvidencePage(QScrollArea):
         self.configured_tools = available_tools()
         for index, option in enumerate(self.configured_tools):
             card = self.tool_choices.button(index)
+            if not isinstance(card, ChoiceCard):
+                continue
             card.setEnabled(option.available)
             card.description_label.setText(option.description)
             card.setToolTip(option.description)
@@ -340,7 +343,7 @@ class EvidencePage(QScrollArea):
             self.case_name.setText(name)
         return True
 
-    def use_case(self, workspace: str, case) -> bool:
+    def use_case(self, workspace: str, case: Case) -> bool:
         """Select an existing open case without altering an active intake job."""
         if self.busy:
             return False
@@ -441,7 +444,7 @@ class EvidencePage(QScrollArea):
             self.progress.setValue(value)
         self.status_changed.emit(message + (f" · {value}%" if value >= 0 else ""))
 
-    def _succeeded(self, result) -> None:
+    def _succeeded(self, result: IntakeResult) -> None:
         evidence = result.evidence
         self.result.setPlainText(
             f"✓ Evidence verified and registered\n\nFile: {evidence.file_path}\n"
@@ -463,12 +466,13 @@ class EvidencePage(QScrollArea):
         self.form.setEnabled(True)
         self.start.setEnabled(True)
         self.cancel.setEnabled(False)
-        self.worker.deleteLater()
+        if self.worker is not None:
+            self.worker.deleteLater()
         self.worker = None
         self.intake_finished.emit()
 
     def _cancel(self) -> None:
-        if self.busy:
+        if self.busy and self.worker is not None:
             self.worker.cancelled.set()
             self.cancel.setEnabled(False)
             self.progress_label.setText(

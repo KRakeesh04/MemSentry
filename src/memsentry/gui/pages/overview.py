@@ -1,12 +1,14 @@
 """Case dashboard showing recorded evidence, runs, and findings."""
 
 from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
     QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QMessageBox,
     QPushButton,
     QScrollArea,
@@ -19,6 +21,9 @@ from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.intake_widgets import ChoiceCard
 from memsentry.gui.workflow_stepper import WorkflowStepper
+from memsentry.models.case import Case
+from memsentry.models.finding import Finding
+from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
@@ -36,11 +41,13 @@ def label(text: str, style: str = "") -> QLabel:
     return widget
 
 
-def clear_layout(layout):
+def clear_layout(layout: QLayout) -> None:
     while layout.count():
         item = layout.takeAt(0)
-        if item.widget():
-            item.widget().deleteLater()
+        if item is not None:
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
 
 class OverviewPage(QScrollArea):
@@ -49,13 +56,13 @@ class OverviewPage(QScrollArea):
     cases_requested = Signal()
     case_opened = Signal(str, object)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.case = None
+        self.case: Case | None = None
         self.workspace_path = ""
-        self.database = None
+        self.database: Database | None = None
         self._intake_active = False
-        self._intake_error = None
+        self._intake_error: str | None = None
         self.analysis_busy = False
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -153,13 +160,13 @@ class OverviewPage(QScrollArea):
         self.workflow_timer.timeout.connect(self._poll_workflow)
         self.workflow_timer.start()
 
-    def open_case(self, workspace, case):
+    def open_case(self, workspace: str, case: Case) -> None:
         self._intake_active = False
         self.workspace_path = workspace
         self.case = case
         self.refresh()
 
-    def resizeEvent(self, event):
+    def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         narrow = self.viewport().width() < 800
         self.columns.setDirection(
@@ -167,7 +174,7 @@ class OverviewPage(QScrollArea):
         )
         self.recent_card.setMaximumWidth(16777215 if narrow else 280)
 
-    def refresh(self):
+    def refresh(self) -> None:
         self._intake_active = False
         self._intake_error = None
         if self.case is None:
@@ -216,7 +223,7 @@ class OverviewPage(QScrollArea):
             self.evidence_choice.clear()
             clear_layout(self.recent_layout)
 
-    def _evidence_changed(self):
+    def _evidence_changed(self) -> None:
         evidence = self.evidence_choice.currentData()
         self.analyze_button.setEnabled(bool(evidence and self.case and self.case.status == "open"
                                             and evidence.integrity_status == "verified"
@@ -242,6 +249,8 @@ class OverviewPage(QScrollArea):
             )
             self.hash.setText(f"SHA-256 baseline\n{evidence.sha256}")
             try:
+                if self.database is None:
+                    raise ValueError("No workspace database is available")
                 for run in AnalysisRunRepository(self.database).list_by_evidence(evidence.id):
                     self.run_choice.addItem(
                         f"{run.created_at:%Y-%m-%d %H:%M} UTC · {run.status} · {str(run.id)[:8]}",
@@ -256,7 +265,7 @@ class OverviewPage(QScrollArea):
         self.run_choice.blockSignals(False)
         self._run_changed()
 
-    def _run_changed(self):
+    def _run_changed(self) -> None:
         clear_layout(self.findings_layout)
         run = self.run_choice.currentData()
         findings = []
@@ -267,6 +276,8 @@ class OverviewPage(QScrollArea):
                 f"Run: {run.id}\nStatus: {run.status}\n{run.error_message or ''}"
             )
             try:
+                if self.database is None:
+                    raise ValueError("No workspace database is available")
                 findings = FindingRepository(self.database).list_by_analysis_run(run.id)
                 plugins = PluginRunRepository(self.database).list_by_analysis_run(run.id)
                 if plugins:
@@ -307,11 +318,11 @@ class OverviewPage(QScrollArea):
             )
         self._refresh_workflow()
 
-    def _poll_workflow(self):
+    def _poll_workflow(self) -> None:
         if self.isVisible() and not self._intake_active:
             self._refresh_workflow()
 
-    def show_intake_progress(self, message, value):
+    def show_intake_progress(self, message: str, value: int) -> None:
         self._intake_active = True
         self._intake_error = None
         self.workflow.show_records(self.case, None, None, [])
@@ -324,13 +335,13 @@ class OverviewPage(QScrollArea):
             f"New evidence intake · {message}" + (f" · {value}%" if value >= 0 else ""))
         self.workflow._paint_states()
 
-    def finish_intake_progress(self):
+    def finish_intake_progress(self) -> None:
         if self._intake_error:
             return
         self._intake_active = False
         self._refresh_workflow()
 
-    def show_intake_failure(self, message):
+    def show_intake_failure(self, message: str) -> None:
         if not self._intake_active:
             return
         self._intake_error = message
@@ -341,7 +352,7 @@ class OverviewPage(QScrollArea):
         self.workflow.detail.setText(f"Evidence intake stopped · {message}")
         self.workflow._paint_states()
 
-    def _refresh_workflow(self):
+    def _refresh_workflow(self) -> None:
         evidence = self.evidence_choice.currentData()
         run = self.run_choice.currentData()
         events = []
@@ -363,7 +374,7 @@ class OverviewPage(QScrollArea):
             self.workflow.show_records(None, None, None, [])
             self.workflow.detail.setText(f"Workflow status unavailable: {exc}")
 
-    def _show_finding(self, finding):
+    def _show_finding(self, finding: Finding) -> None:
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Finding details")
         dialog.setTextFormat(Qt.TextFormat.PlainText)
@@ -376,5 +387,5 @@ class OverviewPage(QScrollArea):
         dialog.exec()
 
 
-def create_page():
+def create_page() -> OverviewPage:
     return OverviewPage()

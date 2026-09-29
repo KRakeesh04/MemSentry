@@ -7,6 +7,8 @@ from PySide6.QtWidgets import QPushButton
 from memsentry.app.case_service import create_case, generate_case_number, workspace_database
 from memsentry.app.intake_service import IntakeRequest, IntakeService
 from memsentry.gui.main_window import MainWindow
+from memsentry.gui.pages.activity import ActivityPage
+from memsentry.gui.pages.artifacts import ArtifactsPage
 from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.overview import OverviewPage
@@ -18,6 +20,32 @@ from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRe
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
+
+
+@pytest.mark.parametrize("page_type", [ActivityPage, ArtifactsPage])
+def test_run_picker_formats_uuid_identifiers(qtbot, tmp_path, page_type):
+    source = tmp_path / "synthetic.mem"
+    source.write_bytes(b"synthetic memory only")
+    result = IntakeService().run(
+        IntakeRequest(tmp_path, "CASE-1", "Test", source), lambda *_: None, Event()
+    )
+    database = workspace_database(tmp_path)
+    case = CaseRepository(database).get_by_id(result.evidence.case_id)
+    run = AnalysisRunRepository(database).create(
+        AnalysisRunCreate(
+            evidence_id=result.evidence.id,
+            application_version="test",
+            volatility_version="test",
+            host_os=HostOS.LINUX,
+        )
+    )
+    page = page_type()
+    qtbot.addWidget(page)
+    page.open_case(str(tmp_path), case)
+    page.evidence_combo.setCurrentIndex(1)
+    assert page.run_combo.count() == 2
+    assert str(run.id)[:8] in page.run_combo.itemText(1)
+    assert page.run_combo.itemData(1).id == run.id
 
 
 @pytest.fixture(autouse=True)

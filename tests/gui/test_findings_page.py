@@ -75,7 +75,7 @@ def test_findings_page_empty_state_is_real(qtbot, tmp_path):
 def test_main_window_findings_integration(qtbot, tmp_path):
     from memsentry.gui.main_window import MainWindow
 
-    database, case, evidence = create_workspace_case(tmp_path)
+    _database, case, _evidence = create_workspace_case(tmp_path)
     window = MainWindow()
     qtbot.addWidget(window)
 

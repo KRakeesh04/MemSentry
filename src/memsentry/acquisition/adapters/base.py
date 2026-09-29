@@ -12,9 +12,18 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from shutil import which
-from typing import BinaryIO
+from typing import BinaryIO, Protocol, cast
 
 ProgressCallback = Callable[[int, float | None], None]
+
+
+class CaptureProcess(Protocol):
+    @property
+    def returncode(self) -> int | None: ...
+
+    def poll(self) -> int | None: ...
+
+    def wait(self, timeout: float | None = None) -> int: ...
 
 
 class AcquisitionError(RuntimeError):
@@ -66,7 +75,7 @@ class DumpAdapter(ABC):
         """Optional adapter-specific guidance for a failed capture."""
         return ""
 
-    def start_process(self, command: tuple[str, ...], log: BinaryIO):
+    def start_process(self, command: tuple[str, ...], log: BinaryIO) -> CaptureProcess:
         return subprocess.Popen(
             command,
             stdout=log,
@@ -139,11 +148,14 @@ class DumpAdapter(ABC):
                     # Do not abandon a root process or assume we may signal it.
                     process.wait()
                 else:
-                    process.terminate()
+                    # Non-elevated adapters launch a subprocess; elevated handles
+                    # only support waiting and must never reach this branch.
+                    local_process = cast("subprocess.Popen[bytes]", process)
+                    local_process.terminate()
                     try:
                         process.wait(timeout=5)
                     except subprocess.TimeoutExpired:
-                        process.kill()
+                        local_process.kill()
                         process.wait()
             raise
         finally:

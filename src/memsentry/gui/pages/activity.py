@@ -1,8 +1,9 @@
 """Inspect stage history, hash checks, plugin status, and audit actions."""
 
 import logging
+from typing import Any
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -23,6 +24,8 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.models.case import Case
+from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
@@ -54,26 +57,29 @@ def _create_kpi_card(title: str) -> tuple[QFrame, QLabel]:
 class SortableTableItem(QTableWidgetItem):
     """QTableWidgetItem supporting custom sorting keys (e.g. numeric progress)."""
 
-    def __init__(self, text: str, sort_key=None):
+    def __init__(self, text: str, sort_key: str | int | float | None = None) -> None:
         super().__init__(text)
         self.sort_key = sort_key
 
-    def __lt__(self, other):
+    def __lt__(self, other: QTableWidgetItem) -> bool:
         if isinstance(other, SortableTableItem) and self.sort_key is not None and other.sort_key is not None:
-            return self.sort_key < other.sort_key
+            if isinstance(self.sort_key, str) and isinstance(other.sort_key, str):
+                return self.sort_key < other.sort_key
+            if isinstance(self.sort_key, (int, float)) and isinstance(other.sort_key, (int, float)):
+                return self.sort_key < other.sort_key
         return super().__lt__(other)
 
 
 class ActivityPage(QScrollArea):
     """Activity page displaying workflow events and integrity verification checkpoints."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.case = None
+        self.case: Case | None = None
         self.workspace_path = ""
-        self.database = None
-        self.all_events: list[dict] = []
-        self.filtered_events: list[dict] = []
+        self.database: Database | None = None
+        self.all_events: list[dict[str, Any]] = []
+        self.filtered_events: list[dict[str, Any]] = []
 
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -257,12 +263,12 @@ class ActivityPage(QScrollArea):
         self.empty_state.setGeometry(self.table.viewport().rect())
         self.empty_state.show()
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj is self.table.viewport() and event.type() == QEvent.Type.Resize:
             self.empty_state.setGeometry(self.table.viewport().rect())
         return super().eventFilter(obj, event)
 
-    def open_case(self, workspace_path: str, case) -> None:
+    def open_case(self, workspace_path: str, case: Case | None) -> None:
         """Set active workspace and case, then load activity events."""
         self.workspace_path = workspace_path
         self.case = case
@@ -316,7 +322,7 @@ class ActivityPage(QScrollArea):
             try:
                 runs = AnalysisRunRepository(self.database).list_by_evidence(evidence.id)
                 for run in runs:
-                    self.run_combo.addItem(f"Run {run.id[:8]} ({run.status})", run)
+                    self.run_combo.addItem(f"Run {str(run.id)[:8]} ({run.status})", run)
             except Exception:
                 logger.exception("Failed to populate runs for evidence")
 
@@ -347,7 +353,7 @@ class ActivityPage(QScrollArea):
 
         self._filter_events()
 
-    def _filter_events(self, *args) -> None:
+    def _filter_events(self, *args: object) -> None:
         query = self.search_input.text().strip().lower()
         status_filter = self.status_combo.currentText().lower()
         integrity_filter = self.integrity_combo.currentText().lower()
@@ -408,7 +414,7 @@ class ActivityPage(QScrollArea):
             return s[:19] + " UTC"
         return s
 
-    def _render_events(self, events: list[dict]) -> None:
+    def _render_events(self, events: list[dict[str, Any]]) -> None:
         sorting_was_enabled = self.table.isSortingEnabled()
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
@@ -472,7 +478,7 @@ class ActivityPage(QScrollArea):
         self.table.setSortingEnabled(sorting_was_enabled)
         self._update_empty_state_and_kpis(events)
 
-    def _update_empty_state_and_kpis(self, events: list[dict]) -> None:
+    def _update_empty_state_and_kpis(self, events: list[dict[str, Any]]) -> None:
         total_loaded = len(self.all_events)
         filtered_count = len(events)
 
@@ -548,7 +554,7 @@ class ActivityPage(QScrollArea):
         dialog.setDetailedText(detail_text)
         dialog.exec()
 
-    def _show_context_menu(self, pos) -> None:
+    def _show_context_menu(self, pos: QPoint) -> None:
         item = self.table.itemAt(pos)
         if not item:
             return
@@ -584,5 +590,5 @@ class ActivityPage(QScrollArea):
             clipboard.setText(str(event.get("id", "")))
 
 
-def create_page():
+def create_page() -> ActivityPage:
     return ActivityPage()

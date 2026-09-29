@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 from memsentry.app.workflow_service import WorkflowService
 from memsentry.correlation.engine import CorrelationEngine
@@ -18,7 +19,7 @@ from memsentry.yara.scanner import YaraError, YaraScanner, YaraScanResult
 
 
 class PartialAnalysisError(RuntimeError):
-    def __init__(self, errors, results):
+    def __init__(self, errors: Sequence[str], results: list[dict[str, Any]]) -> None:
         super().__init__("\n".join(errors))
         self.results = results
 
@@ -84,10 +85,15 @@ class AnalysisService:
         runs.mark_completed(analysis_run_id)
         return result
 
-    def _run_plugins(self, analysis_run_id, plugin_ids, yara_rule_paths):
+    def _run_plugins(
+        self, analysis_run_id: UUID, plugin_ids: Sequence[str],
+        yara_rule_paths: Sequence[str | Path],
+    ) -> list[dict[str, Any]]:
         selected = self.plugin_registry.validate_selection(self.os_type, plugin_ids)
         database = self.plugin_runner.plugin_run_repository.database
         run = AnalysisRunRepository(database).get_by_id(analysis_run_id)
+        if run is None:
+            raise ValueError("Analysis run is not registered")
         events = WorkflowRepository(database)
         results: list[dict[str, Any]] = []
         errors = []
@@ -111,6 +117,8 @@ class AnalysisService:
                 errors.append(str(exc))
                 result = {"plugin_id": plugin.id, "error": str(exc)}
                 evidence = EvidenceRepository(database).get_by_id(run.evidence_id)
+                if evidence is None:
+                    raise ValueError("Evidence is not registered") from exc
                 WorkflowService(database).verify(evidence, analysis_run_id, "analyze", "after")
             results.append(result)
             events.record(

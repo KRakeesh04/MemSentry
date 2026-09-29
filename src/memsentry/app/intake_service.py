@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import psutil
 
+from memsentry.acquisition.adapters.base import DumpAdapter
 from memsentry.acquisition.adapters.linuxDumpManager import LinuxAvmlAdapter
 from memsentry.acquisition.adapters.windowsDumpManager import WindowsWinPmemAdapter
 from memsentry.acquisition.dump_manager import DumpManager
@@ -90,7 +91,7 @@ class IntakeService:
         ):
             raise ValueError("The selected evidence conflicts with the workspace database.")
 
-        adapter = None
+        adapter: DumpAdapter | None = None
         if source is None:
             host = platform.system()
             if host == "Linux":
@@ -126,7 +127,7 @@ class IntakeService:
         operation.mkdir(parents=True, mode=0o700)
         audit_path = operation / "audit.jsonl"
 
-        def audit(action: str, **data) -> None:
+        def audit(action: str, **data: object) -> None:
             with audit_path.open("a", encoding="utf-8") as log:
                 log.write(
                     json.dumps(
@@ -230,7 +231,7 @@ class IntakeService:
             check_cancel()
             audit("verified", expected=baseline, actual=verified)
             evidence_repository = EvidenceRepository(database)
-            def record_intake(evidence):
+            def record_intake(evidence: Evidence) -> None:
                 events = WorkflowRepository(database)
                 events.record(evidence.id, None, "evidence", "operation", "completed", 100)
                 events.record(evidence.id, None, "evidence", "after", "completed", 100,

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -15,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memsentry.app.intake_service import IntakeResult
 from memsentry.gui.analysis_dialog import AnalysisDialog, AnalysisWorker
 from memsentry.gui.branding import application_icon
 from memsentry.gui.cursors import InteractiveCursors
@@ -27,6 +29,8 @@ from memsentry.gui.pages.findings import FindingsPage
 from memsentry.gui.pages.overview import OverviewPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
+from memsentry.models.analysis_run import AnalysisRun
+from memsentry.models.case import Case
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
@@ -50,8 +54,8 @@ class MainWindow(QMainWindow):
 
     def __init__(self) -> None:
         super().__init__()
-        self.analysis_worker = None
-        self.analysis_run = None
+        self.analysis_worker: AnalysisWorker | None = None
+        self.analysis_run: AnalysisRun | None = None
         self.setWindowTitle("MemSentry")
         self.setWindowIcon(application_icon())
         self.resize(1100, 720)
@@ -122,7 +126,9 @@ class MainWindow(QMainWindow):
         self.evidence_page.intake_failed.connect(self.overview_page.show_intake_failure)
         workspace_layout.addWidget(status)
         layout.addWidget(self.workspace, 1)
-        QApplication.instance().paletteChanged.connect(self._apply_theme)
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        app.paletteChanged.connect(self._apply_theme)
         self._apply_theme()
 
         self.sidebar.currentRowChanged.connect(self.pages.setCurrentIndex)
@@ -133,7 +139,7 @@ class MainWindow(QMainWindow):
         self.analysis_timer.setInterval(500)
         self.analysis_timer.timeout.connect(self._analysis_progress)
 
-    def _start_analysis(self):
+    def _start_analysis(self) -> None:
         if self.analysis_worker is not None or self.evidence_page.busy:
             QMessageBox.information(self, "Job in progress", "Wait for the current job to finish.")
             return
@@ -147,6 +153,8 @@ class MainWindow(QMainWindow):
         request = dialog.request
         dialog.deleteLater()
         self.analysis_run = None
+        if request is None:
+            return
         self.analysis_worker = AnalysisWorker(request, self)
         self.analysis_worker.started_run.connect(self._analysis_started)
         self.analysis_worker.succeeded.connect(self._analysis_succeeded)
@@ -160,11 +168,11 @@ class MainWindow(QMainWindow):
         self.analysis_worker.start()
         self.analysis_timer.start()
 
-    def _analysis_started(self, run):
+    def _analysis_started(self, run: AnalysisRun) -> None:
         self.analysis_run = run
         self.overview_page.refresh()
 
-    def _analysis_progress(self):
+    def _analysis_progress(self) -> None:
         if self.analysis_worker is None or self.analysis_run is None:
             return
         try:
@@ -179,29 +187,30 @@ class MainWindow(QMainWindow):
             # A brief database lock must not interrupt the running forensic job.
             pass
 
-    def _analysis_succeeded(self, run):
+    def _analysis_succeeded(self, run: AnalysisRun) -> None:
         self.analysis_timer.stop()
         self.job_status.setText(f"Analysis {run.status} · {run.id}")
         self.overview_page.refresh()
         if run.error_message:
             self.overview_page.error.setText(run.error_message)
 
-    def _analysis_failed(self, message):
+    def _analysis_failed(self, message: str) -> None:
         self.analysis_timer.stop()
         self.job_status.setText(f"Analysis failed · {message}")
         self.overview_page.refresh()
         self.overview_page.error.setText(f"Analysis failed: {message}")
 
-    def _analysis_finished(self):
+    def _analysis_finished(self) -> None:
         self.analysis_timer.stop()
-        self.analysis_worker.deleteLater()
+        if self.analysis_worker is not None:
+            self.analysis_worker.deleteLater()
         self.analysis_worker = None
         self.overview_page.analysis_busy = False
         self.overview_page._evidence_changed()
         self.evidence_page.form.setEnabled(True)
         self.evidence_page.start.setEnabled(True)
 
-    def _open_case(self, workspace, case):
+    def _open_case(self, workspace: str, case: Case) -> None:
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
@@ -213,7 +222,7 @@ class MainWindow(QMainWindow):
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
 
-    def _intake_progress(self, message, value):
+    def _intake_progress(self, message: str, value: int) -> None:
         overview = self.overview_page
         case = overview.case
         if (case and case.case_number == self.evidence_page.case_number.text().strip()
@@ -221,7 +230,7 @@ class MainWindow(QMainWindow):
                 Path(self.evidence_page.workspace.text()).expanduser().resolve()):
             overview.show_intake_progress(message, value)
 
-    def _add_case_evidence(self):
+    def _add_case_evidence(self) -> None:
         if self.analysis_worker is not None:
             QMessageBox.information(self, "Analysis is running", "Wait for analysis to finish before adding evidence.")
             return
@@ -237,7 +246,7 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, "Case unavailable", self.evidence_page.result.toPlainText())
 
-    def _evidence_registered(self, result):
+    def _evidence_registered(self, result: IntakeResult) -> None:
         try:
             workspace = str(result.database_path.parent)
             case = CaseRepository(Database(result.database_path)).get_by_id(result.evidence.case_id)
@@ -251,7 +260,7 @@ class MainWindow(QMainWindow):
     def _apply_theme(self) -> None:
         self.workspace.setStyleSheet(workspace_stylesheet())
 
-    def closeEvent(self, event) -> None:
+    def closeEvent(self, event: QCloseEvent) -> None:
         if self.analysis_worker is not None:
             QMessageBox.information(self, "Analysis is running",
                                     "Wait for analysis and its final SHA-256 check before closing.")

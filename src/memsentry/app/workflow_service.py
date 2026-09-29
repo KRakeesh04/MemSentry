@@ -1,8 +1,12 @@
 """Read-only SHA-256 gates around major evidence operations."""
 
 import hashlib
+from collections.abc import Callable
+from typing import TypeVar
+from uuid import UUID
 
-from memsentry.models.evidence import IntegrityStatus
+from memsentry.models.evidence import Evidence, IntegrityStatus
+from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
@@ -14,15 +18,18 @@ class IntegrityCheckError(RuntimeError):
     pass
 
 
+T = TypeVar("T")
+
+
 class WorkflowService:
     """Every supported operation must pass a fresh before/after check to advance."""
 
-    def __init__(self, database):
+    def __init__(self, database: Database) -> None:
         self.database = database
         self.events = WorkflowRepository(database)
         self.evidence = EvidenceRepository(database)
 
-    def verify(self, evidence, run_id, stage, phase):
+    def verify(self, evidence: Evidence, run_id: UUID | str | None, stage: str, phase: str) -> None:
         self.events.record(evidence.id, run_id, stage, phase, "running", expected=evidence.sha256)
         digest = hashlib.sha256()
         actual = None
@@ -79,7 +86,7 @@ class WorkflowService:
             "SHA-256 matches the registered baseline",
         )
 
-    def execute(self, run_id, stage, operation):
+    def execute(self, run_id: UUID, stage: str, operation: Callable[[], T]) -> T:
         """Run an operation only on registered evidence, retaining failed checkpoints."""
         if stage not in STAGES[3:]:
             raise ValueError("Unsupported workflow operation")

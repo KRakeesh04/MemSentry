@@ -1,5 +1,7 @@
 """Compact workflow rail with persisted SHA-256 transition checkpoints."""
 
+from typing import Any
+
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QPalette
 from PySide6.QtWidgets import (
@@ -13,10 +15,13 @@ from PySide6.QtWidgets import (
 )
 
 from memsentry.app.workflow_service import STAGES
+from memsentry.models.analysis_run import AnalysisRun
+from memsentry.models.case import Case
+from memsentry.models.evidence import Evidence
 
 
 class WorkflowStepper(QFrame):
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
         layout = QVBoxLayout(self)
@@ -74,13 +79,15 @@ class WorkflowStepper(QFrame):
         layout.addWidget(self.detail)
         self.states = ["pending"] * 8
         self.checkpoints = ["pending"] * 7
-        QApplication.instance().paletteChanged.connect(self._paint_states)
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        app.paletteChanged.connect(self._paint_states)
         self._paint_states()
 
-    def text(self):
+    def text(self) -> str:
         return self.detail.text()
 
-    def show_records(self, case, evidence, run, events):
+    def show_records(self, case: Case | None, evidence: Evidence | None, run: AnalysisRun | None, events: list[dict[str, Any]]) -> None:
         self.states = ["pending"] * 8
         self.checkpoints = ["pending"] * 7
         self.checkpoints[0] = "na"  # No image exists yet between case creation and acquisition.
@@ -143,23 +150,23 @@ class WorkflowStepper(QFrame):
             message = f"Evidence {evidence.integrity_status} — workflow blocked. Original baseline retained."
         self.detail.setText(message)
         for index, gate in enumerate(self.gates):
-            event = gate_events.get(index)
+            gate_event = gate_events.get(index)
             gate.setToolTip(
                 "No evidence image exists before acquisition; SHA-256 is not applicable."
                 if index == 0
                 else "Fresh SHA-256 checks run before and after supported operations. "
                 "A mismatch blocks advancement. Unconnected operations stay pending."
             )
-            if event:
+            if gate_event:
                 gate.setToolTip(
                     gate.toolTip()
-                    + f"\n{event.get('created_at', '')} · {event['phase']} · {event['status']}"
-                    f"\nExpected: {event.get('expected_sha256') or 'Not recorded'}"
-                    f"\nActual: {event.get('actual_sha256') or 'Not yet available'}"
+                    + f"\n{gate_event.get('created_at', '')} · {gate_event['phase']} · {gate_event['status']}"
+                    f"\nExpected: {gate_event.get('expected_sha256') or 'Not recorded'}"
+                    f"\nActual: {gate_event.get('actual_sha256') or 'Not yet available'}"
                 )
         self._paint_states()
 
-    def _paint_states(self):
+    def _paint_states(self) -> None:
         dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
         green = "#74C7A9" if dark else "#237657"
         blue = "#60A5FA" if dark else "#2563EB"

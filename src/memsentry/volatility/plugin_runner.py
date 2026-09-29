@@ -37,7 +37,7 @@ def _normalized_fields(artifact: Any) -> dict[str, Any]:
     Kept inside ``original_data`` so the normalized record is persisted in the
     existing ``artifacts`` table without changing the schema or repositories.
     """
-    fields = dict(dataclasses.asdict(artifact)) if dataclasses.is_dataclass(artifact) else {}
+    fields = dict(dataclasses.asdict(artifact)) if dataclasses.is_dataclass(artifact) and not isinstance(artifact, type) else {}
     fields.pop("original_data", None)
     fields.pop("provenance", None)
     return fields
@@ -104,6 +104,8 @@ class PluginRunner:
         # Validate the selection and resolve the Volatility plugin name.
         self.plugin_registry.get_volatility_plugin(plugin_id, normalised_os)
         plugin_name = definition.volatility_plugin_for(normalised_os)
+        if plugin_name is None:
+            raise PluginRunnerError(f"Plugin {plugin_id!r} is unavailable for {normalised_os}")
         parser_spec = self._parser_spec(definition.parser)
 
         run = self.plugin_run_repository.create(

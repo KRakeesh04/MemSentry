@@ -89,7 +89,7 @@ class SymbolManager:
 
         return [p for p in path.rglob("*") if p.is_file()]
 
-    def get_status(self) -> dict:
+    def get_status(self) -> dict[str, bool]:
         """Return availability status for supported operating systems."""
         return {
             "windows": self.symbols_available("windows"),

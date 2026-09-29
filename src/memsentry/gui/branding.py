@@ -34,7 +34,9 @@ class BrandWidget(QWidget):
         self.wordmark.setFont(font)
         layout.addWidget(self.wordmark)
         layout.addStretch()
-        QApplication.instance().paletteChanged.connect(self._apply_theme)
+        app = QApplication.instance()
+        assert isinstance(app, QApplication)
+        app.paletteChanged.connect(self._apply_theme)
         self._apply_theme()
 
     def _apply_theme(self) -> None:

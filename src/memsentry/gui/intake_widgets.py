@@ -6,12 +6,13 @@ import time
 from pathlib import Path
 
 import psutil
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLayout
+from PySide6.QtCore import QMimeData, Qt, Signal
+from PySide6.QtGui import QDragEnterEvent, QDropEvent
+from PySide6.QtWidgets import QFrame, QGridLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 
 class ChoiceCard(QPushButton):
-    def __init__(self, title: str, description: str, parent=None) -> None:
+    def __init__(self, title: str, description: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("choiceCard")
         self.setCheckable(True)
@@ -36,7 +37,7 @@ class FileDropArea(QPushButton):
     file_selected = Signal(str)
     invalid_drop = Signal(str)
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(
             "↑\n\nDrop a memory dump here, or click to select\n\n"
             "Common formats: .raw · .dmp · .vmem · .mem · .lime · .bin",
@@ -48,7 +49,9 @@ class FileDropArea(QPushButton):
         self.setAcceptDrops(True)
 
     @staticmethod
-    def local_file(mime) -> str | None:
+    def local_file(mime: QMimeData | None) -> str | None:
+        if mime is None:
+            return None
         urls = mime.urls()
         if len(urls) == 1 and urls[0].isLocalFile():
             path = Path(urls[0].toLocalFile())
@@ -56,13 +59,13 @@ class FileDropArea(QPushButton):
                 return str(path)
         return None
 
-    def dragEnterEvent(self, event) -> None:
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
         if self.isEnabled() and self.local_file(event.mimeData()):
             event.acceptProposedAction()
         else:
             event.ignore()
 
-    def dropEvent(self, event) -> None:
+    def dropEvent(self, event: QDropEvent) -> None:
         path = self.local_file(event.mimeData())
         if self.isEnabled() and path:
             self.file_selected.emit(path)
@@ -75,7 +78,7 @@ class FileDropArea(QPushButton):
 
 
 class SystemCard(QFrame):
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
         layout = QGridLayout(self)

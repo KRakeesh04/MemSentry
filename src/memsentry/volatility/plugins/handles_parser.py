@@ -46,7 +46,7 @@ class HandlesParser:
     ) -> HandlesParseResult:
         normalise_os(os_type, self._SUPPORTED_OS)
         handles = []
-        warnings = []
+        warnings: list[str] = []
         for number, depth, row in walk_rows(decode_rows(raw_output, "handles")):
             values = normalise_values(row)
             pid = required_pid(values, ("pid",), "handles", number, warnings)

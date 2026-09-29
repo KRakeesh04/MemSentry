@@ -9,10 +9,9 @@ from memsentry.volatility.adapter import (
     EvidenceNotFoundError,
     VolatilityAdapter,
     VolatilityAdapterError,
-    VolatilitySymbolError,
     VolatilityUnsupportedOSError,
 )
-from memsentry.volatility.symbol_manager import SymbolManager, SymbolManagerError
+from memsentry.volatility.symbol_manager import SymbolManager
 
 
 def test_symbol_manager_ensure_symbols_returns_path_when_available(tmp_path: Path) -> None:
@@ -195,21 +194,21 @@ def test_render_json_outputs_valid_list(tmp_path: Path, monkeypatch) -> None:
     assert json.loads(output) == [{"PID": 1}]
 
 
-def test_symbol_manager_symbols_used_by_lists_symbol_tables(tmp_path: Path) -> None:
+def test_symbol_manager_symbols_used_by_lists_windows_tables(tmp_path: Path) -> None:
     manager = SymbolManager(str(tmp_path / "symbols"))
-    symbol_dir = manager.get_symbol_path("linux")
+    symbol_dir = manager.get_symbol_path("windows")
     symbol_dir.mkdir(parents=True, exist_ok=True)
     (symbol_dir / "kernel.json").touch()
     (symbol_dir / "userspace.json").touch()
 
-    assert set(manager.symbols_used_by("linux")) == {"kernel", "userspace"}
+    assert set(manager.symbols_used_by("windows")) == {"kernel", "userspace"}
     assert manager.symbols_used_by("mac") == []
     assert not manager.symbols_available("mac")
 
 
-def test_symbol_manager_normalises_os_and_rejects_unknown(tmp_path: Path) -> None:
+def test_symbol_manager_normalises_linux_and_rejects_unknown(tmp_path: Path) -> None:
     manager = SymbolManager(str(tmp_path / "symbols"))
-    assert manager.get_symbol_path("WINDOWS") == manager.symbol_dir / "windows"
+    assert manager.get_symbol_path("LINUX") == manager.symbol_dir / "linux"
     with pytest.raises(ValueError):
         manager.get_symbol_path("android")
     assert manager.get_status() == {"windows": False, "linux": False, "mac": False}

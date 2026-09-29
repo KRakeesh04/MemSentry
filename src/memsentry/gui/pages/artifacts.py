@@ -3,7 +3,7 @@
 import json
 import logging
 
-from PySide6.QtCore import QEvent, Qt
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
 from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.models.artifact import Artifact
+from memsentry.models.case import Case
+from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
@@ -56,13 +58,16 @@ def _create_kpi_card(title: str) -> tuple[QFrame, QLabel]:
 class SortableTableItem(QTableWidgetItem):
     """QTableWidgetItem supporting custom sorting keys (e.g. numeric PID)."""
 
-    def __init__(self, text: str, sort_key=None):
+    def __init__(self, text: str, sort_key: str | int | float | None = None) -> None:
         super().__init__(text)
         self.sort_key = sort_key
 
-    def __lt__(self, other):
+    def __lt__(self, other: QTableWidgetItem) -> bool:
         if isinstance(other, SortableTableItem) and self.sort_key is not None and other.sort_key is not None:
-            return self.sort_key < other.sort_key
+            if isinstance(self.sort_key, str) and isinstance(other.sort_key, str):
+                return self.sort_key < other.sort_key
+            if isinstance(self.sort_key, (int, float)) and isinstance(other.sort_key, (int, float)):
+                return self.sort_key < other.sort_key
         return super().__lt__(other)
 
 
@@ -88,11 +93,11 @@ def _extract_artifact_summary(artifact: Artifact) -> tuple[str, str, str]:
     )
 
     # Details string
-    if "cmdline" in norm and norm["cmdline"]:
+    if norm.get("cmdline"):
         details = str(norm["cmdline"])
-    elif "command" in norm and norm["command"]:
+    elif norm.get("command"):
         details = str(norm["command"])
-    elif "CommandLine" in norm and norm["CommandLine"]:
+    elif norm.get("CommandLine"):
         details = str(norm["CommandLine"])
     elif "local_address" in norm or "foreign_address" in norm:
         l_addr = norm.get("local_address", "")
@@ -117,11 +122,11 @@ def _extract_artifact_summary(artifact: Artifact) -> tuple[str, str, str]:
 class ArtifactsPage(QScrollArea):
     """Artifacts page for searching and inspecting captured memory artifacts."""
 
-    def __init__(self, parent=None):
+    def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.case = None
+        self.case: Case | None = None
         self.workspace_path = ""
-        self.database = None
+        self.database: Database | None = None
         self.all_artifacts: list[Artifact] = []
         self.filtered_artifacts: list[Artifact] = []
 
@@ -274,12 +279,12 @@ class ArtifactsPage(QScrollArea):
         self.empty_state.setGeometry(self.table.viewport().rect())
         self.empty_state.show()
 
-    def eventFilter(self, obj, event):
+    def eventFilter(self, obj: QObject, event: QEvent) -> bool:
         if obj is self.table.viewport() and event.type() == QEvent.Type.Resize:
             self.empty_state.setGeometry(self.table.viewport().rect())
         return super().eventFilter(obj, event)
 
-    def open_case(self, workspace_path: str, case) -> None:
+    def open_case(self, workspace_path: str, case: Case | None) -> None:
         """Set active workspace and case, then load artifacts."""
         self.workspace_path = workspace_path
         self.case = case
@@ -333,7 +338,7 @@ class ArtifactsPage(QScrollArea):
             try:
                 runs = AnalysisRunRepository(self.database).list_by_evidence(evidence.id)
                 for run in runs:
-                    self.run_combo.addItem(f"Run {run.id[:8]} ({run.status})", run)
+                    self.run_combo.addItem(f"Run {str(run.id)[:8]} ({run.status})", run)
             except Exception:
                 logger.exception("Failed to populate runs for evidence")
 
@@ -380,7 +385,7 @@ class ArtifactsPage(QScrollArea):
             self.type_combo.setCurrentIndex(index)
         self.type_combo.blockSignals(False)
 
-    def _filter_artifacts(self, *args) -> None:
+    def _filter_artifacts(self, *args: object) -> None:
         query = self.search_input.text().strip().lower()
         selected_type = self.type_combo.currentData()
         selected_evidence = self.evidence_combo.currentData()
@@ -427,7 +432,7 @@ class ArtifactsPage(QScrollArea):
         self.filtered_artifacts = filtered
         self._render_artifacts(filtered)
 
-    def _format_timestamp(self, dt_val) -> str:
+    def _format_timestamp(self, dt_val: object) -> str:
         if not dt_val:
             return "—"
         s = str(dt_val).replace("T", " ")
@@ -532,7 +537,7 @@ class ArtifactsPage(QScrollArea):
         if not artifact or not isinstance(artifact, Artifact):
             return
 
-        name, details, source = _extract_artifact_summary(artifact)
+        _name, _details, source = _extract_artifact_summary(artifact)
 
         dialog = QMessageBox(self)
         dialog.setWindowTitle("Artifact Details")
@@ -553,7 +558,7 @@ class ArtifactsPage(QScrollArea):
         dialog.setDetailedText(detail_text)
         dialog.exec()
 
-    def _show_context_menu(self, pos) -> None:
+    def _show_context_menu(self, pos: QPoint) -> None:
         item = self.table.itemAt(pos)
         if not item:
             return
@@ -565,7 +570,7 @@ class ArtifactsPage(QScrollArea):
         if not artifact or not isinstance(artifact, Artifact):
             return
 
-        name, details, source = _extract_artifact_summary(artifact)
+        name, details, _source = _extract_artifact_summary(artifact)
 
         menu = QMenu(self)
         view_action = menu.addAction("View Artifact Details")
@@ -594,5 +599,5 @@ class ArtifactsPage(QScrollArea):
             clipboard.setText(json.dumps(artifact.original_data, indent=2))
 
 
-def create_page():
+def create_page() -> ArtifactsPage:
     return ArtifactsPage()

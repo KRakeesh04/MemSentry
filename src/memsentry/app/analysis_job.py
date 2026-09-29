@@ -2,7 +2,7 @@
 
 import json
 import platform
-import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
@@ -12,7 +12,7 @@ from volatility3.framework import constants
 
 from memsentry.app.analysis_service import AnalysisService
 from memsentry.app.case_service import workspace_database
-from memsentry.models.analysis_run import AnalysisRunCreate, HostOS
+from memsentry.models.analysis_run import AnalysisRun, AnalysisRunCreate, HostOS
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
@@ -36,7 +36,9 @@ class AnalysisRequest:
     yara_rules: tuple[Path, ...] = ()
 
 
-def run_analysis(request: AnalysisRequest, started=lambda run: None):
+def run_analysis(
+    request: AnalysisRequest, started: Callable[[AnalysisRun], None] = lambda run: None
+) -> AnalysisRun:
     database = workspace_database(request.workspace)
     evidence = EvidenceRepository(database).get_by_id(request.evidence_id)
     if evidence is None or evidence.integrity_status != "verified":
@@ -120,4 +122,7 @@ def run_analysis(request: AnalysisRequest, started=lambda run: None):
         raise
     finally:
         volatility3.symbols.__path__ = previous_paths
-    return runs.get_by_id(run.id)
+    completed = runs.get_by_id(run.id)
+    if completed is None:
+        raise ValueError("Analysis run is no longer registered")
+    return completed

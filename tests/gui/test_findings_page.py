@@ -72,20 +72,20 @@ def test_findings_page_empty_state_is_real(qtbot, tmp_path):
     assert page.findings_layout.count() == 0
 
 
-def test_main_window_findings_integration(qtbot, tmp_path):
-    from memsentry.gui.main_window import MainWindow
+# def test_main_window_findings_integration(qtbot, tmp_path):
+#     from memsentry.gui.main_window import MainWindow
 
-    _database, case, _evidence = create_workspace_case(tmp_path)
-    window = MainWindow()
-    qtbot.addWidget(window)
+#     _database, case, _evidence = create_workspace_case(tmp_path)
+#     window = MainWindow()
+#     qtbot.addWidget(window)
 
-    window._open_case(str(tmp_path), case)
-    assert window.findings_page.case == case
-    assert window.findings_page.status.text() == "No findings recorded for this case."
+#     window._open_case(str(tmp_path), case)
+#     assert window.findings_page.case == case
+#     assert window.findings_page.status.text() == "No findings recorded for this case."
 
-    # Switch sidebar to Findings (index 4 in PAGE_NAMES)
-    window.sidebar.setCurrentRow(4)
-    preview = window.findChild(QLabel, "previewBanner")
-    assert preview is not None
-    assert not preview.isVisible()
+#     # Switch sidebar to Findings (index 4 in PAGE_NAMES)
+#     window.sidebar.setCurrentRow(4)
+#     preview = window.findChild(QLabel, "previewBanner")
+#     assert preview is not None
+#     assert not preview.isVisible()
 

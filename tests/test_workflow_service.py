@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
+import volatility3.symbols
 
 from memsentry.app.analysis_service import AnalysisService
 from memsentry.app.workflow_service import IntegrityCheckError, WorkflowService
@@ -14,6 +15,8 @@ from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRe
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
+from memsentry.volatility.adapter import VolatilityAdapter
+from memsentry.volatility.symbol_manager import SymbolManager
 
 
 @pytest.fixture
@@ -120,3 +123,47 @@ def test_analysis_service_uses_integrity_gates(registered):
         )
         == 1
     )
+
+
+@pytest.mark.parametrize("os_type", ["windows", "linux", "mac"])
+def test_analysis_prepares_missing_symbols_before_plugins(registered, tmp_path, monkeypatch, os_type):
+    db, evidence, run = registered
+    monkeypatch.setattr(volatility3.symbols, "__path__", list(volatility3.symbols.__path__))
+    manager = SymbolManager(str(tmp_path / "symbols"))
+    adapter = VolatilityAdapter(manager)
+    registry = Mock()
+    registry.validate_selection.return_value = [SimpleNamespace(id="pslist")]
+    runner = Mock()
+    runner.plugin_run_repository.database = db
+
+    def execute(**kwargs):
+        assert manager.get_symbol_path(os_type).is_dir()
+        assert str(manager.symbol_dir) in volatility3.symbols.__path__
+        return {"artifacts": []}
+
+    runner.run_plugin.side_effect = execute
+    AnalysisService(
+        adapter, registry, runner, Mock(), os_type=os_type, dump_path=str(evidence.file_path)
+    ).run(run.id, ["pslist"])
+    runner.run_plugin.assert_called_once()
+    assert sha256(evidence.file_path.read_bytes()).hexdigest() == evidence.sha256
+
+
+def test_symbol_setup_failure_stops_plugins_and_checks_integrity(registered, tmp_path):
+    db, evidence, run = registered
+    manager = SymbolManager(str(tmp_path / "symbols"))
+    manager.get_symbol_path("windows").write_text("not a directory")
+    registry = Mock()
+    registry.validate_selection.return_value = [SimpleNamespace(id="pslist")]
+    runner = Mock()
+    runner.plugin_run_repository.database = db
+    service = AnalysisService(
+        VolatilityAdapter(manager), registry, runner, Mock(), dump_path=str(evidence.file_path)
+    )
+    with pytest.raises(FileExistsError):
+        service.run(run.id, ["pslist"])
+    runner.run_plugin.assert_not_called()
+    assert AnalysisRunRepository(db).get_by_id(run.id).status == "failed"
+    events = WorkflowRepository(db).list_events(evidence.id, run.id)
+    assert events[-1]["phase"] == "after"
+    assert events[-1]["actual_sha256"] == evidence.sha256

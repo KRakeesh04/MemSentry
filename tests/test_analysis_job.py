@@ -42,6 +42,7 @@ def job(tmp_path, monkeypatch):
     monkeypatch.setattr("memsentry.app.analysis_job.PluginRegistry", lambda: registry)
     adapter = SimpleNamespace(
         initialize=lambda os_type: None,
+        load_symbols=lambda os_type: symbols / os_type,
         run_plugin=lambda name, path: PluginExecutionResult(
             name, json.dumps([{"PID": 4, "PPID": 0, "ImageFileName": "System"}]), "test", 0.1
         ),
@@ -126,7 +127,9 @@ def test_independent_plugins_continue_after_failure(job, monkeypatch):
     monkeypatch.setattr(
         "memsentry.app.analysis_job.VolatilityAdapter",
         lambda *args, **kwargs: SimpleNamespace(
-            initialize=lambda os_type: None, run_plugin=execute
+            initialize=lambda os_type: None,
+            load_symbols=lambda os_type: request.symbol_dir / os_type,
+            run_plugin=execute,
         ),
     )
     run = run_analysis(replace(request, plugin_ids=("process_list", "process_tree")))

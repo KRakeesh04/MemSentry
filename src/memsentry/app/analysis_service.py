@@ -95,6 +95,16 @@ class AnalysisService:
         if run is None:
             raise ValueError("Analysis run is not registered")
         events = WorkflowRepository(database)
+        if selected:
+            events.record(
+                run.evidence_id,
+                analysis_run_id,
+                "analyze",
+                "operation",
+                "running",
+                message="Preparing Volatility symbol directory and search path",
+            )
+            self.volatility_adapter.load_symbols(self.os_type)
         results: list[dict[str, Any]] = []
         errors = []
         for plugin in selected:

@@ -121,6 +121,7 @@ class MainWindow(QMainWindow):
         self.overview_page.import_requested.connect(self._add_case_evidence)
         self.overview_page.analyze_requested.connect(self._start_analysis)
         self.evidence_page.evidence_registered.connect(self._evidence_registered)
+        self.evidence_page.analyze_requested.connect(self._analyze_registered_evidence)
         self.evidence_page.intake_progress.connect(self._intake_progress)
         self.evidence_page.intake_finished.connect(self.overview_page.finish_intake_progress)
         self.evidence_page.intake_failed.connect(self.overview_page.show_intake_failure)
@@ -138,6 +139,29 @@ class MainWindow(QMainWindow):
         self.analysis_timer = QTimer(self)
         self.analysis_timer.setInterval(500)
         self.analysis_timer.timeout.connect(self._analysis_progress)
+
+    def _analyze_registered_evidence(self, result: IntakeResult) -> None:
+        if self.analysis_worker is not None or self.evidence_page.busy:
+            QMessageBox.information(self, "Job in progress", "Wait for the current job to finish.")
+            return
+        try:
+            case = CaseRepository(Database(result.database_path)).get_by_id(result.evidence.case_id)
+            if case is None:
+                raise ValueError("The evidence case is no longer available.")
+            self._open_case(str(result.database_path.parent), case)
+            choice = self.overview_page.evidence_choice
+            for index in range(choice.count()):
+                if choice.itemData(index).id == result.evidence.id:
+                    choice.setCurrentIndex(index)
+                    break
+            else:
+                raise ValueError("The registered evidence is no longer available.")
+            if not self.overview_page.analyze_button.isEnabled():
+                raise ValueError("Analysis requires an open case and verified evidence.")
+        except Exception as exc:
+            QMessageBox.warning(self, "Cannot analyze evidence", str(exc))
+            return
+        self._start_analysis()
 
     def _start_analysis(self) -> None:
         if self.analysis_worker is not None or self.evidence_page.busy:
@@ -164,6 +188,7 @@ class MainWindow(QMainWindow):
         self.overview_page.analyze_button.setEnabled(False)
         self.evidence_page.form.setEnabled(False)
         self.evidence_page.start.setEnabled(False)
+        self.evidence_page.analyse.setEnabled(False)
         self.job_status.setText("Preparing analysis · validating plugins, symbols, and rules")
         self.analysis_worker.start()
         self.analysis_timer.start()
@@ -209,6 +234,7 @@ class MainWindow(QMainWindow):
         self.overview_page._evidence_changed()
         self.evidence_page.form.setEnabled(True)
         self.evidence_page.start.setEnabled(True)
+        self.evidence_page.analyse.setEnabled(self.evidence_page.registered_result is not None)
 
     def _open_case(self, workspace: str, case: Case) -> None:
         self.overview_page.open_case(workspace, case)

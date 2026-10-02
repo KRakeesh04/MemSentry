@@ -55,6 +55,7 @@ class IntakeWorker(QThread):
 class EvidencePage(QScrollArea):
     status_changed = Signal(str)
     evidence_registered = Signal(object)
+    analyze_requested = Signal(object)
     intake_progress = Signal(str, int)
     intake_finished = Signal()
     intake_failed = Signal(str)
@@ -62,6 +63,7 @@ class EvidencePage(QScrollArea):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.worker: IntakeWorker | None = None
+        self.registered_result: IntakeResult | None = None
         self.setAccessibleName("Memory evidence intake")
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
@@ -218,8 +220,11 @@ class EvidencePage(QScrollArea):
         self.start.setObjectName("primaryAction")
         self.cancel = QPushButton("Cancel")
         self.cancel.setEnabled(False)
+        self.analyse = QPushButton("Analyse evidence")
+        self.analyse.setHidden(True)
         actions.addWidget(self.start)
         actions.addWidget(self.cancel)
+        actions.addWidget(self.analyse)
         actions.addStretch()
         layout.addLayout(actions)
         self.progress_label = QLabel("Ready · Select a workspace and evidence source")
@@ -247,6 +252,7 @@ class EvidencePage(QScrollArea):
         self.mode.currentIndexChanged.connect(self._mode_changed)
         self.start.clicked.connect(self._start)
         self.cancel.clicked.connect(self._cancel)
+        self.analyse.clicked.connect(self._start_analysis)
         self._mode_changed()
 
     def _path_row(self, field: QLineEdit, directory: bool = False) -> QWidget:
@@ -425,6 +431,9 @@ class EvidencePage(QScrollArea):
         self.settings.setValue("intake/workspace", str(request.workspace))
         self.settings.setValue("intake/tool", self.tool.text().strip())
         self.result.clear()
+        self.registered_result = None
+        self.analyse.hide()
+        self.analyse.setEnabled(False)
         self.form.setEnabled(False)
         self.start.setEnabled(False)
         self.cancel.setEnabled(True)
@@ -445,6 +454,7 @@ class EvidencePage(QScrollArea):
         self.status_changed.emit(message + (f" · {value}%" if value >= 0 else ""))
 
     def _succeeded(self, result: IntakeResult) -> None:
+        self.registered_result = result
         evidence = result.evidence
         self.result.setPlainText(
             f"✓ Evidence verified and registered\n\nFile: {evidence.file_path}\n"
@@ -452,6 +462,12 @@ class EvidencePage(QScrollArea):
             f"Evidence ID: {evidence.id}\nDatabase: {result.database_path}\nAudit: {result.audit_path}"
         )
         self.evidence_registered.emit(result)
+        self.analyse.setHidden(False)
+        self.analyse.setEnabled(self.worker is None)
+
+    def _start_analysis(self) -> None:
+        if self.registered_result is not None and not self.busy:
+            self.analyze_requested.emit(self.registered_result)
 
     def _failed(self, message: str) -> None:
         if self.worker is not None:
@@ -469,6 +485,7 @@ class EvidencePage(QScrollArea):
         if self.worker is not None:
             self.worker.deleteLater()
         self.worker = None
+        self.analyse.setEnabled(self.registered_result is not None)
         self.intake_finished.emit()
 
     def _cancel(self) -> None:

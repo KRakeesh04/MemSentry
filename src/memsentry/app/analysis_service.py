@@ -8,11 +8,16 @@ from typing import Any
 from uuid import UUID
 
 from memsentry.app.workflow_service import WorkflowService
-from memsentry.correlation.engine import CorrelationEngine
+from memsentry.correlation.engine import CorrelationEngine, CorrelationResult
+from memsentry.models.artifact import Artifact
+from memsentry.models.finding import Finding
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
+from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
+from memsentry.storage.repositories.finding_repository import FindingRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
 from memsentry.volatility.adapter import VolatilityAdapter
+from memsentry.volatility.os_utils import normalise_os
 from memsentry.volatility.plugin_registry import PluginRegistry
 from memsentry.volatility.plugin_runner import PluginRunner, PluginRunnerError
 from memsentry.yara.scanner import YaraError, YaraScanner, YaraScanResult
@@ -28,7 +33,8 @@ class AnalysisService:
     """Coordinates selected Volatility plugins for a single evidence image.
 
     The service delegates execution and persistence to the ``PluginRunner``
-    and verifies evidence integrity. Correlation is not invoked here yet.
+    verifies evidence integrity, correlates persisted artifacts, and stores
+    findings with their source evidence. Reports are handled separately.
     """
 
     def __init__(
@@ -46,7 +52,7 @@ class AnalysisService:
         self.plugin_runner = plugin_runner
         self.yara_scanner = yara_scanner
         self.correlation_engine = correlation_engine
-        self.os_type = os_type
+        self.os_type = normalise_os(os_type)
         self.dump_path = dump_path
 
     def run(
@@ -59,7 +65,9 @@ class AnalysisService:
 
         For each ``plugin_id`` the underlying :class:`PluginRunner` executes the
         plugin against the read-only image, persists the raw output and
-        normalized artifacts, and returns a per-plugin result dict.
+        normalized artifacts, and returns a per-plugin result dict. The final
+        entry contains the correlation result and persisted findings. Each
+        major stage verifies the evidence before and after execution.
         """
         database = self.plugin_runner.plugin_run_repository.database
         runs = AnalysisRunRepository(database)
@@ -69,24 +77,75 @@ class AnalysisService:
         evidence = EvidenceRepository(database).get_by_id(run.evidence_id)
         if evidence is None or Path(self.dump_path).resolve() != evidence.file_path.resolve():
             raise ValueError("Analysis path must match the registered evidence")
+        if run.status != "pending":
+            raise ValueError("Analysis run has already started; create a new run")
+        if evidence.evidence_os and normalise_os(evidence.evidence_os) != self.os_type:
+            raise ValueError("Selected OS does not match the registered evidence OS")
+        if self.correlation_engine is not None and self.correlation_engine.os_type != self.os_type:
+            raise ValueError("Correlation engine OS does not match the analysis OS")
         runs.mark_running(analysis_run_id)
+        workflow = WorkflowService(database)
+        errors: list[str] = []
         try:
-            result = WorkflowService(database).execute(
-                analysis_run_id,
-                "analyze",
-                lambda: self._run_plugins(analysis_run_id, plugin_ids, yara_rule_paths),
+            try:
+                result = workflow.execute(
+                    analysis_run_id,
+                    "analyze",
+                    lambda: self._run_plugins(analysis_run_id, plugin_ids, yara_rule_paths),
+                )
+            except PartialAnalysisError as exc:
+                errors.append(str(exc))
+                result = exc.results
+            artifacts = ArtifactRepository(database).list_by_analysis_run(run.id)
+            engine = self.correlation_engine or CorrelationEngine(self.os_type)
+            def correlate() -> CorrelationResult:
+                correlation = engine.correlate(artifacts, run.id)
+                if errors:
+                    correlation.warnings.append("Analysis is incomplete: " + "\n".join(errors))
+                for warning in correlation.warnings:
+                    workflow.events.record(
+                        evidence.id, run.id, "correlate", "operation", "running", message=warning
+                    )
+                return correlation
+
+            correlation = workflow.execute(run.id, "correlate", correlate)
+            findings = workflow.execute(
+                run.id, "findings", lambda: self._store_findings(run.id, correlation, artifacts)
             )
-        except PartialAnalysisError as exc:
-            runs.mark_completed_with_errors(analysis_run_id, str(exc))
-            return exc.results
+            result.append({"correlation": correlation, "findings": findings})
         except Exception as exc:
             runs.mark_failed(analysis_run_id, str(exc))
             raise
-        runs.mark_completed(analysis_run_id)
+        if errors:
+            runs.mark_completed_with_errors(analysis_run_id, "\n".join(errors))
+        else:
+            runs.mark_completed(analysis_run_id)
         return result
 
+    def _store_findings(
+        self, run_id: UUID, correlation: CorrelationResult, artifacts: list[Artifact]
+    ) -> list[Finding]:
+        if len(correlation.findings) != len(correlation.finding_artifact_ids):
+            raise ValueError("Correlation findings are missing artifact provenance")
+        by_id = {artifact.id: artifact for artifact in artifacts}
+        items = []
+        for finding, artifact_ids in zip(
+            correlation.findings, correlation.finding_artifact_ids, strict=True
+        ):
+            if finding.analysis_run_id != run_id:
+                raise ValueError("Correlation finding belongs to another analysis run")
+            if any(artifact_id not in by_id for artifact_id in artifact_ids):
+                raise ValueError("Correlation finding references an unknown artifact")
+            items.append(
+                (finding, [by_id[artifact_id] for artifact_id in dict.fromkeys(artifact_ids)])
+            )
+        database = self.plugin_runner.plugin_run_repository.database
+        return FindingRepository(database).create_many_with_evidence(items)
+
     def _run_plugins(
-        self, analysis_run_id: UUID, plugin_ids: Sequence[str],
+        self,
+        analysis_run_id: UUID,
+        plugin_ids: Sequence[str],
         yara_rule_paths: Sequence[str | Path],
     ) -> list[dict[str, Any]]:
         selected = self.plugin_registry.validate_selection(self.os_type, plugin_ids)
@@ -163,7 +222,5 @@ class AnalysisService:
         results.append({"yara": yara_result})
         if errors:
             raise PartialAnalysisError(errors, results)
-
-        # TODO: Correlate the artifacts from all plugins and persist the results.
 
         return results

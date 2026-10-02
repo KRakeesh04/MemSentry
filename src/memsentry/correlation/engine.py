@@ -50,14 +50,13 @@ class CorrelationResult:
     relationships: list[ArtifactRelationship] = field(default_factory=list)
     process_contexts: dict[int, ProcessContext] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
+    finding_artifact_ids: list[list[UUID]] = field(default_factory=list)
 
 
 class CorrelationEngine:
     """Correlates memory artifacts and generates forensic findings."""
 
-    def __init__(
-        self, os_type: str = "windows", rules_path: str | Path | None = None
-    ) -> None:
+    def __init__(self, os_type: str = "windows", rules_path: str | Path | None = None) -> None:
         self.os_type = os_type
         self.rules = self._load_rules(rules_path)
 
@@ -73,23 +72,43 @@ class CorrelationEngine:
             result.warnings.append("No artifacts provided for correlation")
             return result
 
+        # Work on normalized copies while retaining the persisted raw rows unchanged.
+        artifacts = [
+            artifact.model_copy(
+                update={
+                    "original_data": {
+                        **artifact.original_data,
+                        **artifact.original_data.get("normalized", {}),
+                    }
+                }
+            )
+            for artifact in artifacts
+        ]
+
         # Build process contexts
         result.process_contexts = self._build_process_contexts(artifacts)
 
         # Detect relationships
-        result.relationships = self._detect_relationships(
-            artifacts, result.process_contexts
-        )
+        result.relationships = self._detect_relationships(artifacts, result.process_contexts)
 
         # Apply correlation rules
         for rule in self.rules:
             if self.os_type not in rule.applicable_os:
                 continue
 
-            rule_findings = self._apply_rule(
-                rule, result.process_contexts, analysis_run_id
-            )
-            result.findings.extend(rule_findings)
+            for context in result.process_contexts.values():
+                finding = self._evaluate_rule(rule, context, analysis_run_id)
+                if finding:
+                    result.findings.append(finding)
+                    result.finding_artifact_ids.append(
+                        [artifact.id for artifact in artifacts if artifact.pid == context.pid]
+                    )
+
+        result.warnings.append(
+            "Correlation uses the current heuristic rules; missing artifacts are not negative "
+            "results. MS-R008 is not implemented, and parent-child and YARA-region rules "
+            "require investigator review."
+        )
 
         return result
 
@@ -226,11 +245,14 @@ class CorrelationEngine:
             if pid not in contexts:
                 process_name = self._extract_process_name(artifact)
                 ppid = self._extract_ppid(artifact)
-                contexts[pid] = ProcessContext(
-                    pid=pid, process_name=process_name, ppid=ppid
-                )
+                contexts[pid] = ProcessContext(pid=pid, process_name=process_name, ppid=ppid)
 
             context = contexts[pid]
+            if artifact.artifact_type in ("process", "process_tree"):
+                context.process_name = self._extract_process_name(artifact) or context.process_name
+                ppid = self._extract_ppid(artifact)
+                if ppid is not None:
+                    context.ppid = ppid
             artifact_type = artifact.artifact_type
 
             if artifact_type == "memory_region":
@@ -265,9 +287,7 @@ class CorrelationEngine:
                     else UUID(int=context.ppid)
                 )
                 target_id = (
-                    context.memory_regions[0].id
-                    if context.memory_regions
-                    else UUID(int=pid)
+                    context.memory_regions[0].id if context.memory_regions else UUID(int=pid)
                 )
                 relationships.append(
                     ArtifactRelationship(
@@ -283,9 +303,7 @@ class CorrelationEngine:
         for pid, context in contexts.items():
             for conn in context.network_connections:
                 target_id = (
-                    context.memory_regions[0].id
-                    if context.memory_regions
-                    else UUID(int=pid)
+                    context.memory_regions[0].id if context.memory_regions else UUID(int=pid)
                 )
                 relationships.append(
                     ArtifactRelationship(
@@ -386,7 +404,7 @@ class CorrelationEngine:
     def _check_executable_private_memory(self, context: ProcessContext) -> bool:
         """Check if process has executable private memory regions."""
         for region in context.memory_regions:
-            protection = region.original_data.get("protection", "").lower()
+            protection = (region.original_data.get("protection") or "").lower()
             is_private = region.original_data.get("private_memory", False)
             is_executable = "x" in protection or "execute" in protection
             if is_private and is_executable:
@@ -446,7 +464,7 @@ class CorrelationEngine:
         if not context.command_line or len(context.network_connections) == 0:
             return False
 
-        command_line = context.command_line.original_data.get("command_line", "").lower()
+        command_line = (context.command_line.original_data.get("command_line") or "").lower()
         suspicious_indicators = [
             "powershell",
             "cmd.exe",
@@ -480,9 +498,7 @@ class CorrelationEngine:
 
     def _extract_process_name(self, artifact: Artifact) -> str | None:
         """Extract process name from artifact."""
-        return artifact.original_data.get("process_name") or artifact.original_data.get(
-            "name"
-        )
+        return artifact.original_data.get("process_name") or artifact.original_data.get("name")
 
     def _extract_ppid(self, artifact: Artifact) -> int | None:
         """Extract PPID from artifact."""

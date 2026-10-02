@@ -1,9 +1,12 @@
 """Compact workflow rail with persisted SHA-256 transition checkpoints."""
 
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QPalette
+from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtGui import QPainter, QPalette, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
@@ -19,6 +22,30 @@ from memsentry.models.analysis_run import AnalysisRun
 from memsentry.models.case import Case
 from memsentry.models.evidence import Evidence
 
+ASSETS = Path(__file__).resolve().parent / "assets"
+STATUS_LABELS = {
+    "completed": "Complete",
+    "running": "In progress",
+    "ready": "Up next",
+    "failed": "Failed",
+    "pending": "Pending",
+    "untracked": "Not recorded",
+}
+
+
+@lru_cache(maxsize=128)
+def _icon(name: str, color: str, size: int, ratio: float) -> QPixmap:
+    """Render the shared vector assets at the current display scale and palette."""
+    svg = (ASSETS / f"{name}.svg").read_text(encoding="utf-8")
+    renderer = QSvgRenderer(QByteArray(svg.replace("currentColor", color).encode()))
+    pixmap = QPixmap(round(size * ratio), round(size * ratio))
+    pixmap.setDevicePixelRatio(ratio)
+    pixmap.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(pixmap)
+    renderer.render(painter)
+    painter.end()
+    return pixmap
+
 
 class WorkflowStepper(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -26,47 +53,65 @@ class WorkflowStepper(QFrame):
         self.setObjectName("card")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
-        heading = QLabel("Investigation Workflow")
-        heading.setObjectName("muted")
-        layout.addWidget(heading)
+        layout.setSpacing(12)
+        header = QHBoxLayout()
+        heading = QLabel("Investigation workflow")
+        heading.setStyleSheet("font-size: 14px; font-weight: 600;")
+        header.addWidget(heading)
+        header.addStretch()
+        self.summary = QLabel()
+        self.summary.setObjectName("muted")
+        header.addWidget(self.summary)
+        layout.addLayout(header)
         scroll = QScrollArea()
         scroll.setObjectName("workflowScroll")
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setFixedHeight(105)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFixedHeight(126)
+        self.rail_scroll = scroll
         rail = QWidget()
+        rail.setMinimumWidth(850)
         row = QHBoxLayout(rail)
+        row.setContentsMargins(0, 4, 0, 0)
         row.setSpacing(0)
         self.nodes = []
         self.gates = []
         self.lines = []
+        self.status_labels = []
         for index, name in enumerate(STAGES):
             node = QWidget()
             column = QVBoxLayout(node)
-            column.setContentsMargins(4, 8, 4, 4)
-            column.setSpacing(8)
-            circle = QLabel(str(index + 1))
-            circle.setFixedSize(24, 24)
+            node.setMinimumWidth(84)
+            column.setContentsMargins(2, 0, 2, 0)
+            column.setSpacing(6)
+            circle = QLabel()
+            circle.setFixedSize(44, 44)
             circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
             caption = QLabel(name.title())
             caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
             column.addWidget(circle, alignment=Qt.AlignmentFlag.AlignHCenter)
             column.addWidget(caption)
+            status = QLabel()
+            status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            column.addWidget(status)
+            self.status_labels.append(status)
             column.addStretch()
             row.addWidget(node)
             self.nodes.append((circle, caption))
             if index < len(STAGES) - 1:
                 connector = QWidget()
                 connector_layout = QVBoxLayout(connector)
-                connector_layout.setContentsMargins(8, 20, 8, 4)
-                connector_layout.setSpacing(15)
+                connector_layout.setContentsMargins(4, 21, 4, 0)
+                connector_layout.setSpacing(10)
                 line = QFrame()
                 line.setFixedHeight(1)
                 connector_layout.addWidget(line)
-                gate = QLabel("SHA-256")
+                gate = QLabel()
                 gate.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                gate.setMinimumWidth(66)
-                connector_layout.addWidget(gate)
+                gate.setFixedSize(18, 18)
+                connector_layout.addWidget(gate, alignment=Qt.AlignmentFlag.AlignHCenter)
                 connector_layout.addStretch()
                 row.addWidget(connector, 1)
                 self.gates.append(gate)
@@ -87,7 +132,13 @@ class WorkflowStepper(QFrame):
     def text(self) -> str:
         return self.detail.text()
 
-    def show_records(self, case: Case | None, evidence: Evidence | None, run: AnalysisRun | None, events: list[dict[str, Any]]) -> None:
+    def show_records(
+        self,
+        case: Case | None,
+        evidence: Evidence | None,
+        run: AnalysisRun | None,
+        events: list[dict[str, Any]],
+    ) -> None:
         self.states = ["pending"] * 8
         self.checkpoints = ["pending"] * 7
         self.checkpoints[0] = "na"  # No image exists yet between case creation and acquisition.
@@ -137,15 +188,18 @@ class WorkflowStepper(QFrame):
             ):
                 self.states[index] = "ready"
                 break
-        message = "Ready — completed checks are recorded results, not continuous verification."
+        message = "Create or open a case to begin." if not case else "Ready for the next stage."
         if events:
             event = events[-1]
-            action = "SHA-256" if event["phase"] != "operation" else "Operation"
-            message = (
-                f"{event['stage'].title()} · {action} "
-                f"{event['phase'] if event['phase'] != 'operation' else ''} · "
-                f"{event['status']} · {event['progress']}% · {event['message']}"
-            )
+            parts = [event["stage"].title()]
+            if event["phase"] != "operation":
+                parts.append("Integrity check")
+            parts.append(STATUS_LABELS.get(event["status"], event["status"]))
+            if event["status"] == "running":
+                parts.append(f"{event['progress']}%")
+            if event.get("message"):
+                parts.append(event["message"].replace("SHA-256", "Integrity"))
+            message = " · ".join(parts)
         if evidence and evidence.integrity_status != "verified":
             message = f"Evidence {evidence.integrity_status} — workflow blocked. Original baseline retained."
         self.detail.setText(message)
@@ -168,14 +222,24 @@ class WorkflowStepper(QFrame):
 
     def _paint_states(self) -> None:
         dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
-        green = "#74C7A9" if dark else "#237657"
         blue = "#60A5FA" if dark else "#2563EB"
-        muted = "#8895A7" if dark else "#607086"
+        muted = "#A5B0C0" if dark else "#526174"
+        text = "#E5E7EB" if dark else "#172033"
+        border = "#3D4858" if dark else "#DCE3EC"
+        neutral_fill = "#232B37" if dark else "#F8FAFC"
+        complete_fill = "#20334F" if dark else "#E8F0FE"
+        self.rail_scroll.setStyleSheet(f"""
+            QScrollBar:horizontal {{ height: 8px; background: transparent; margin: 0; }}
+            QScrollBar::handle:horizontal {{ background: {border}; min-width: 32px; border-radius: 4px; }}
+            QScrollBar::handle:horizontal:hover {{ background: {muted}; }}
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{ background: transparent; }}
+        """)
         colors = {
-            "completed": green,
-            "running": blue,
-            "ready": blue,
-            "failed": "#D36565",
+            "completed": blue,
+            "running": text,
+            "ready": text,
+            "failed": text,
             "pending": muted,
             "untracked": muted,
             "na": muted,
@@ -184,19 +248,33 @@ class WorkflowStepper(QFrame):
             zip(self.nodes, self.states, strict=True)
         ):
             color = colors[state]
-            circle.setText(
-                "✓" if state == "completed" else "!" if state == "failed" else str(index + 1)
-            )
-            fill = "#377C65" if state == "completed" else "transparent"
+            circle.setPixmap(_icon(STAGES[index], color, 24, self.devicePixelRatioF()))
+            fill = complete_fill if state == "completed" else neutral_fill
+            outline = color if state in ("completed", "running", "failed") else border
             circle.setStyleSheet(
-                f"QLabel {{ border: 1px solid {color}; border-radius: 12px; "
-                f"background: {fill}; color: {'white' if state == 'completed' else color}; }}"
+                f"QLabel {{ border: 1px solid {outline}; border-radius: 12px; "
+                f"background: {fill}; }}"
             )
-            caption.setStyleSheet(f"QLabel {{ color: {color}; font-size: 11px; }}")
+            caption.setStyleSheet(
+                f"QLabel {{ color: {color}; font-size: 12px; font-weight: 600; }}"
+            )
+            status = self.status_labels[index]
+            status.setText(STATUS_LABELS[state])
+            status.setStyleSheet(
+                f"QLabel {{ color: {blue if state == 'completed' else muted}; font-size: 10px; }}"
+            )
             circle.setToolTip(f"{STAGES[index].title()}: {state}")
             circle.setAccessibleName(f"{STAGES[index].title()}: {state}")
+        self.summary.setText(f"{self.states.count('completed')} of {len(STAGES)} complete")
+        self.summary.setAccessibleName(self.summary.text())
         for gate, line, state in zip(self.gates, self.lines, self.checkpoints, strict=True):
-            symbol = {"completed": "✓", "running": "…", "failed": "!", "na": "N/A"}.get(state, "○")
-            gate.setText(f"{symbol} SHA-256")
-            line.setStyleSheet(f"background: {colors[state]}; border: none;")
-            gate.setStyleSheet(f"QLabel {{ color: {colors[state]}; font-size: 10px; }}")
+            gate.clear()
+            if state == "completed":
+                gate.setPixmap(_icon("verified_badge", blue, 16, self.devicePixelRatioF()))
+            else:
+                gate.setText({"running": "…", "failed": "!"}.get(state, ""))
+            gate.setAccessibleName(f"Integrity checkpoint: {state}")
+            line.setStyleSheet(
+                f"background: {blue if state == 'completed' else border}; border: none;"
+            )
+            gate.setStyleSheet(f"QLabel {{ color: {muted}; font-size: 12px; font-weight: 600; }}")

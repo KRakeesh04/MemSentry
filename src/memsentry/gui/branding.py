@@ -28,7 +28,7 @@ class BrandWidget(QWidget):
         layout.addWidget(logo)
         self.wordmark = QLabel(self)
         font = self.wordmark.font()
-        font.setPointSize(11)
+        font.setPointSize(16)
         font.setBold(True)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.0)
         self.wordmark.setFont(font)

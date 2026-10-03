@@ -118,9 +118,15 @@ class OverviewPage(QScrollArea):
         evidence_layout.addWidget(self.integrity)
         self.details = label("Add a memory image to begin.")
         evidence_layout.addWidget(self.details)
-        self.hash = label("", "muted")
-        self.hash.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        evidence_layout.addWidget(self.hash)
+        self.evidence_details_button = QPushButton("View evidence details")
+        self.evidence_details_button.setEnabled(False)
+        self.evidence_details_button.clicked.connect(self._show_evidence_details)
+
+        details_row = QHBoxLayout()
+        details_row.addStretch()
+        details_row.addWidget(self.evidence_details_button)
+
+        evidence_layout.addLayout(details_row)
         main.addWidget(evidence_card)
         main.addWidget(label("Analysis history", "sectionTitle"))
         self.run_choice = ThemedComboBox()
@@ -237,6 +243,24 @@ class OverviewPage(QScrollArea):
             self.evidence_choice.clear()
             clear_layout(self.recent_layout)
 
+    def _show_evidence_details(self) -> None:
+        evidence = self.evidence_choice.currentData()
+
+        if evidence is None:
+            return
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Evidence details")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+
+        dialog.setText(
+            f"{evidence.original_filename}\n\n"
+            f"Path:\n{evidence.file_path}\n\n"
+            f"SHA-256:\n{evidence.sha256}"
+        )
+
+        dialog.exec()
+
     def _evidence_changed(self) -> None:
         evidence = self.evidence_choice.currentData()
         self.analyze_button.setEnabled(bool(evidence and self.case and self.case.status == "open"
@@ -248,8 +272,9 @@ class OverviewPage(QScrollArea):
         if evidence is None:
             self.integrity.setText("No evidence registered")
             self.details.setText("Add a memory image to begin.")
-            self.hash.clear()
+            self.evidence_details_button.setEnabled(False)
         else:
+            self.evidence_details_button.setEnabled(True)
             verified = evidence.integrity_status == "verified"
             self.integrity.setObjectName("verified" if verified else "integrityWarning")
             self.integrity.setText(
@@ -258,10 +283,9 @@ class OverviewPage(QScrollArea):
             self.details.setText(
                 f"OS: {evidence.evidence_os or 'Not identified'}  ·  "
                 f"Image size: {evidence.file_size_bytes / 1024**3:.2f} GiB\n"
-                f"Registered: {evidence.registered_at:%Y-%m-%d %H:%M} UTC\n"
-                f"Path: {evidence.file_path}"
+                f"Registered: {evidence.registered_at:%Y-%m-%d %H:%M} UTC"
             )
-            self.hash.setText(f"SHA-256 baseline\n{evidence.sha256}")
+            
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")

@@ -93,8 +93,8 @@ class MainWindow(QMainWindow):
         self.cases_page = CasesPage(self.pages)
         self.overview_page = OverviewPage(self.pages)
         self.activity_page = ActivityPage(self.pages)
-        self.findings_page = FindingsPage(self.pages)
         self.artifacts_page = ArtifactsPage(self.pages)
+        self.findings_page = FindingsPage(self.pages)
         functional = {
             "Cases": self.cases_page,
             "Overview": self.overview_page,
@@ -112,7 +112,7 @@ class MainWindow(QMainWindow):
         self.job_status = status
         status.setObjectName("jobStatus")
         self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (4, 5, 6, 8, 9)))
+        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (5, 6, 8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.case_opened.connect(self._open_case)
@@ -240,6 +240,7 @@ class MainWindow(QMainWindow):
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
+        self.findings_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)
 
     def _page_changed(self, index: int) -> None:
@@ -247,6 +248,8 @@ class MainWindow(QMainWindow):
             self.artifacts_page.refresh()
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
+        elif index == 4:  # Findings page index
+            self.findings_page.refresh()
 
     def _intake_progress(self, message: str, value: int) -> None:
         overview = self.overview_page

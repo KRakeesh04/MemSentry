@@ -38,6 +38,33 @@ def workspace_stylesheet() -> str:
         #workspace QPushButton[severity="critical"],
         #workspace QPushButton[severity="high"] {{ border-left: 3px solid #C65C5C; }}
         #workspace QPushButton[severity="medium"] {{ border-left: 3px solid #BD8B3D; }}
+        #workspace QLabel#severityBadge {{
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        #workspace QLabel#severityBadge[severity="critical"] {{
+            color: #F87171;
+            background: rgba(248, 113, 113, 0.12);
+        }}
+        #workspace QLabel#severityBadge[severity="high"] {{
+                color: #FB923C;
+            background: rgba(251, 146, 60, 0.12);
+        }}
+        #workspace QLabel#severityBadge[severity="medium"] {{
+            color: #FACC15;
+            background: rgba(250, 204, 21, 0.12);
+        }}
+        #workspace QLabel#severityBadge[severity="low"] {{
+            color: #60A5FA;
+            background: rgba(96, 165, 250, 0.12);
+        }}
+
+        #workspace QLabel#severityBadge[severity="informational"] {{
+            color: #94A3B8;
+            background: rgba(148, 163, 184, 0.12);
+        }}
         #workspace QFrame#card {{
             background: {surface}; border: 1px solid {border}; border-radius: 10px;
         }}

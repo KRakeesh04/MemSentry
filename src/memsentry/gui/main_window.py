@@ -118,6 +118,7 @@ class MainWindow(QMainWindow):
         self.cases_page.case_opened.connect(self._open_case)
         self.overview_page.case_opened.connect(self._open_case)
         self.overview_page.cases_requested.connect(lambda: self.sidebar.setCurrentRow(0))
+        self.overview_page.findings_requested.connect(lambda: self.sidebar.setCurrentRow(4))
         self.overview_page.import_requested.connect(self._add_case_evidence)
         self.overview_page.analyze_requested.connect(self._start_analysis)
         self.evidence_page.evidence_registered.connect(self._evidence_registered)

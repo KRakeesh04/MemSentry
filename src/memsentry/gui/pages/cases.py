@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
+    QMessageBox,
 )
 
-from memsentry.app.case_service import create_case, generate_case_number, workspace_database
+from memsentry.app.case_service import create_case, generate_case_number, workspace_database, update_case_status
 from memsentry.gui.controls import ThemedComboBox
-from memsentry.models.case import Case
+from memsentry.models.case import Case, CaseStatus
 from memsentry.storage.repositories.case_repository import CaseRepository
 
 
@@ -119,6 +120,24 @@ class CasesPage(QScrollArea):
         self.message.setWordWrap(True)
         layout.addWidget(self.message)
 
+        self.reopen_button = QPushButton("Reopen")
+        self.reopen_button.setEnabled(False)
+        self.reopen_button.clicked.connect(
+            lambda: self._change_selected_status(CaseStatus.OPEN)
+        )
+
+        self.close_button = QPushButton("Close")
+        self.close_button.setEnabled(False)
+        self.close_button.clicked.connect(
+            lambda: self._change_selected_status(CaseStatus.CLOSED)
+        )
+
+        self.archive_button = QPushButton("Archive")
+        self.archive_button.setEnabled(False)
+        self.archive_button.clicked.connect(
+            lambda: self._change_selected_status(CaseStatus.ARCHIVED)
+        )
+
         self.open_button = QPushButton("Open selected case")
         self.open_button.setObjectName("primaryAction")
         self.open_button.setEnabled(False)
@@ -128,6 +147,9 @@ class CasesPage(QScrollArea):
         open_row = QHBoxLayout()
         open_row.addStretch()
         open_row.addWidget(self.open_button)
+        open_row.addWidget(self.reopen_button)
+        open_row.addWidget(self.close_button)
+        open_row.addWidget(self.archive_button)
         layout.addLayout(open_row)
 
         card = QFrame()
@@ -261,12 +283,111 @@ class CasesPage(QScrollArea):
         self._selection_changed()
 
     def _selection_changed(self) -> None:
-        self.open_button.setEnabled(bool(self.table.selectedItems()))
+        row = self.table.currentRow()
+        has_selection = bool(self.table.selectedItems()) and 0 <= row < len(self.visible_cases)
+
+        self.open_button.setEnabled(False)
+        self.close_button.setEnabled(False)
+        self.archive_button.setEnabled(False)
+        self.reopen_button.setEnabled(False)
+
+        if not has_selection:
+            return
+
+        case = self.visible_cases[row]
+
+        if case.status == CaseStatus.OPEN.value:
+            self.open_button.setEnabled(True)
+            self.close_button.setEnabled(True)
+
+        elif case.status == CaseStatus.CLOSED.value:
+            self.archive_button.setEnabled(True)
+            self.reopen_button.setEnabled(True)
+
+        elif case.status == CaseStatus.ARCHIVED.value:
+            self.reopen_button.setEnabled(True)
 
     def open_selected(self, *_: object) -> None:
         row = self.table.currentRow()
-        if self.table.selectedItems() and 0 <= row < len(self.visible_cases):
-            self.case_opened.emit(self.loaded_workspace, self.visible_cases[row])
+
+        if not self.table.selectedItems() or not 0 <= row < len(self.visible_cases):
+            return
+
+        case = self.visible_cases[row]
+
+        if case.status != CaseStatus.OPEN.value:
+            return
+
+        self.case_opened.emit(self.loaded_workspace, case)
+
+    def _change_selected_status(self, status: CaseStatus) -> None:
+        row = self.table.currentRow()
+
+        if not self.table.selectedItems() or not 0 <= row < len(self.visible_cases):
+            return
+
+        case = self.visible_cases[row]
+
+        current_status = case.status
+
+        allowed = (
+            (current_status == CaseStatus.OPEN.value and status == CaseStatus.CLOSED)
+            or (current_status == CaseStatus.CLOSED.value and status == CaseStatus.ARCHIVED)
+            or (
+                current_status in (
+                    CaseStatus.CLOSED.value,
+                    CaseStatus.ARCHIVED.value,
+                )
+                and status == CaseStatus.OPEN
+            )
+        )
+
+        if not allowed:
+            self.message.setText("That case status change is not allowed.")
+            return
+
+        if status == CaseStatus.CLOSED:
+            action = "close"
+            target = "Closed"
+
+        elif status == CaseStatus.ARCHIVED:
+            action = "archive"
+            target = "Archived"
+
+        else:
+            action = "reopen"
+            target = "Open"
+
+        if status == CaseStatus.ARCHIVED:
+            message = (
+                f"Archive case '{case.name}'?\n\n"
+                "Archived cases cannot be opened until they are reopened."
+            )
+        else:
+            message = f"Are you sure you want to {action} case '{case.name}'?"
+
+        reply = QMessageBox.question(
+            self,
+            "Confirm change",
+            message,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            update_case_status(
+                self.loaded_workspace,
+                case.id,
+                status,
+            )
+        except Exception as exc:
+            self.message.setText(f"Could not update case status: {exc}")
+            return
+
+        self.refresh()
 
     def _create(self) -> None:
         self.create_error.clear()

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from memsentry.models.case import Case, CaseCreate
+from memsentry.models.case import Case, CaseCreate, CaseStatus
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.case_repository import CaseRepository
 
@@ -35,3 +35,11 @@ def create_case(workspace: str, number: str, name: str, description: str) -> Cas
             description=description.strip() or None,
         )
     )
+
+def update_case_status(
+    workspace: str | Path,
+    case_id: uuid4,
+    status: CaseStatus,
+) -> Case:
+    database = workspace_database(workspace)
+    return CaseRepository(database).change_status(case_id, status)

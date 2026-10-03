@@ -68,6 +68,16 @@ def workspace_stylesheet() -> str:
         #workspace QFrame#card {{
             background: {surface}; border: 1px solid {border}; border-radius: 10px;
         }}
+        #workspace QFrame#findingCard {{
+            background: {surface};
+            border: 1px solid {border};
+            border-radius: 10px;
+        }}
+
+        #workspace QFrame#findingCard:hover {{
+            border: 1px solid {accent};
+            background: {selected};
+        }}
         #workspace QLabel#previewBanner, #workspace QLabel#jobStatus {{
             background: {surface}; color: {muted}; padding: 14px 24px;
             border-bottom: 1px solid {border};

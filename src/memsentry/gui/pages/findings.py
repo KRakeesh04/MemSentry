@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QLineEdit,
+    QMessageBox,
 )
 
 from memsentry.app.case_service import workspace_database
@@ -22,6 +23,22 @@ from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRe
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
 from memsentry.gui.controls import ThemedComboBox
+
+class FindingCard(QFrame):
+    clicked = Signal(object)
+
+    def __init__(self, finding, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.finding = finding
+
+        self.setObjectName("findingCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.finding)
+
+        super().mousePressEvent(event)
 
 class FindingsPage(QScrollArea):
     """Show findings persisted for the currently opened case."""
@@ -164,8 +181,9 @@ class FindingsPage(QScrollArea):
         )
 
         for finding in visible:
-            card = QFrame()
-            card.setObjectName("card")
+            card = FindingCard(finding)
+            card.clicked.connect(self._show_finding_details)
+            card.setToolTip("Click to view finding details")
 
             card_layout = QVBoxLayout(card)
             card_layout.setContentsMargins(16, 12, 16, 12)
@@ -176,10 +194,12 @@ class FindingsPage(QScrollArea):
             title = QLabel(finding.title)
             title.setWordWrap(True)
             title.setObjectName("sectionTitle")
+            title.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
             severity = QLabel(finding.severity.value.upper())
             severity.setObjectName("severityBadge")
             severity.setProperty("severity", finding.severity.value)
+            severity.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
             header.addWidget(title, 1)
             header.addWidget(
@@ -198,16 +218,47 @@ class FindingsPage(QScrollArea):
                 )
             )
             metadata.setObjectName("muted")
+            metadata.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             card_layout.addWidget(metadata)
 
-            description = QLabel(finding.description)
+            preview = finding.description
+
+            if len(preview) > 220:
+                preview = preview[:220].rstrip() + "…"
+
+            description = QLabel(preview)
             description.setWordWrap(True)
-            description.setTextInteractionFlags(
-                Qt.TextInteractionFlag.TextSelectableByMouse
-            )
+            description.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             card_layout.addWidget(description)
 
             self.findings_layout.addWidget(card)
+
+    def _show_finding_details(self, finding) -> None:
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Finding details")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+
+        confidence = (
+            f"{finding.confidence:.0%}"
+            if finding.confidence is not None
+            else "Not recorded"
+        )
+
+        dialog.setText(
+            f"{finding.title}\n\n"
+            f"{finding.description}"
+        )
+
+        dialog.setDetailedText(
+            f"Finding ID: {finding.id}\n"
+            f"Rule: {finding.rule_id}\n"
+            f"Severity: {finding.severity.value}\n"
+            f"Confidence: {confidence}\n"
+            f"Analysis run: {finding.analysis_run_id}\n"
+            f"Created: {finding.created_at:%Y-%m-%d %H:%M} UTC"
+        )
+
+        dialog.exec()
         
     def _clear_findings(self) -> None:
         while self.findings_layout.count():

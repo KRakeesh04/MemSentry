@@ -240,6 +240,7 @@ class MainWindow(QMainWindow):
     def _open_case(self, workspace: str, case: Case) -> None:
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
+        self.evidence_page.use_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
         self.findings_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)

@@ -78,6 +78,17 @@ def workspace_stylesheet() -> str:
             border: 1px solid {accent};
             background: {selected};
         }}
+        #workspace QFrame#successCard {{
+            background: {"#182A24" if dark else "#ECFDF5"};
+            border: 1px solid {"#2F6B57" if dark else "#86EFAC"};
+            border-radius: 10px;
+        }}
+
+        #workspace QLabel#successTitle {{
+            color: {"#6FCFA9" if dark else "#18734A"};
+            font-size: 16px;
+            font-weight: bold;
+        }}
         #workspace QLabel#previewBanner, #workspace QLabel#jobStatus {{
             background: {surface}; color: {muted}; padding: 14px 24px;
             border-bottom: 1px solid {border};
@@ -142,7 +153,19 @@ def workspace_stylesheet() -> str:
         }}
         #workspace QPushButton#fileDropArea {{
             border: 2px dashed {border}; border-radius: 10px;
-            background: {surface}; color: {text}; padding: 24px;
+            background: {surface}; color: {text}; padding: 16px;
         }}
         #workspace QPushButton#fileDropArea:hover {{ border-color: {accent}; background: {selected}; }}
+        #workspace QLabel#systemFieldLabel {{
+            color: {muted};
+            font-size: 11px;
+            font-weight: 600;
+        }}
+
+        #workspace QLabel#systemFieldValue {{
+            color: {text};
+            font-size: 14px;
+            font-weight: 500;
+        }}
+
     """

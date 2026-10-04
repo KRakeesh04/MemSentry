@@ -27,6 +27,7 @@ from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.findings import FindingsPage
 from memsentry.gui.pages.overview import OverviewPage
+from memsentry.gui.pages.reports import ReportsPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
 from memsentry.models.analysis_run import AnalysisRun
@@ -95,11 +96,13 @@ class MainWindow(QMainWindow):
         self.activity_page = ActivityPage(self.pages)
         self.findings_page = FindingsPage(self.pages)
         self.artifacts_page = ArtifactsPage(self.pages)
+        self.reports_page = ReportsPage(self.pages)
         functional = {
             "Cases": self.cases_page,
             "Overview": self.overview_page,
             "Evidence & Analysis": self.evidence_page,
             "Artifacts": self.artifacts_page,
+            "Reports": self.reports_page,
             "Activity": self.activity_page,
             "Findings": self.findings_page,
         }
@@ -240,6 +243,7 @@ class MainWindow(QMainWindow):
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
+        self.reports_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)
 
     def _page_changed(self, index: int) -> None:

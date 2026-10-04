@@ -26,7 +26,9 @@ from memsentry.gui.pages.artifacts import ArtifactsPage
 from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.findings import FindingsPage
+from memsentry.gui.pages.help import HelpPage
 from memsentry.gui.pages.overview import OverviewPage
+from memsentry.gui.pages.settings import SettingsPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
 from memsentry.models.analysis_run import AnalysisRun
@@ -83,7 +85,7 @@ class MainWindow(QMainWindow):
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
         preview = QLabel(
-            "PREVIEW PAGE · Synthetic examples; Cases, Overview, Evidence intake, Artifacts, Activity, and Findings use real records"
+            "PREVIEW PAGE · Synthetic examples; Cases, Overview, Evidence intake, Artifacts, Activity, Findings, Settings, and Help use real records"
         )
         preview.setObjectName("previewBanner")
         preview.setWordWrap(True)
@@ -95,6 +97,8 @@ class MainWindow(QMainWindow):
         self.activity_page = ActivityPage(self.pages)
         self.artifacts_page = ArtifactsPage(self.pages)
         self.findings_page = FindingsPage(self.pages)
+        self.settings_page = SettingsPage(self.pages)
+        self.help_page = HelpPage(self.pages)
         functional = {
             "Cases": self.cases_page,
             "Overview": self.overview_page,
@@ -102,6 +106,8 @@ class MainWindow(QMainWindow):
             "Artifacts": self.artifacts_page,
             "Activity": self.activity_page,
             "Findings": self.findings_page,
+            "Settings": self.settings_page,
+            "Help": self.help_page,
         }
         for name in self.PAGE_NAMES:
             self.pages.addWidget(

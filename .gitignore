@@ -77,9 +77,6 @@ desktop.ini
 *.swp
 *.swo
 
-# Generated Reports
-reports/
-
 # Generated Documentation
 site/
 

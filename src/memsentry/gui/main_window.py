@@ -115,7 +115,7 @@ class MainWindow(QMainWindow):
         self.job_status = status
         status.setObjectName("jobStatus")
         self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (4, 5, 6, 8, 9)))
+        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (4, 5, 8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.case_opened.connect(self._open_case)

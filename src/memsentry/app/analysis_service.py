@@ -140,6 +140,9 @@ class AnalysisService:
                 (finding, [by_id[artifact_id] for artifact_id in dict.fromkeys(artifact_ids)])
             )
         database = self.plugin_runner.plugin_run_repository.database
+        from memsentry.storage.repositories.relationship_repository import RelationshipRepository
+
+        RelationshipRepository(database).create_baseline(run_id, correlation.relationships)
         return FindingRepository(database).create_many_with_evidence(items)
 
     def _run_plugins(

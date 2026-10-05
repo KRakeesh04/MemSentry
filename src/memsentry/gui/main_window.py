@@ -243,11 +243,12 @@ class MainWindow(QMainWindow):
         self.evidence_page.analyse.setEnabled(self.evidence_page.registered_result is not None)
 
     def _open_case(self, workspace: str, case: Case) -> None:
+        if not self.graph_page.open_case(workspace, case):
+            return
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
         self.findings_page.open_case(workspace, case)
-        self.graph_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)
 
     def _show_finding_graph(self, run_id, finding_id) -> None:
@@ -255,9 +256,12 @@ class MainWindow(QMainWindow):
         index = self.graph_page.run_choice.findData(str(run_id))
         if index >= 0:
             self.graph_page.run_choice.setCurrentIndex(index)
+            if self.graph_page.run_choice.currentData() != str(run_id):
+                return
             key = str(finding_id)
             self.graph_page.visible = self.graph_page.graph.neighborhood({key})
             self.graph_page.render_graph()
+            self.graph_page.capture_edit()
             if key in self.graph_page.node_items:
                 self.graph_page.node_items[key].setSelected(True)
             self.sidebar.setCurrentRow(5)
@@ -320,6 +324,9 @@ class MainWindow(QMainWindow):
                 "Evidence intake is running",
                 "Cancel the intake and wait for it to stop before closing.",
             )
+            event.ignore()
+            return
+        if not self.graph_page.confirm_discard():
             event.ignore()
             return
         super().closeEvent(event)

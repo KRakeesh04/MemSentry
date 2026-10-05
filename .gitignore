@@ -106,8 +106,6 @@ build/
 dist/
 
 
-MemSentry.spec
-
 CORE-FUNCTIONALITY.md
 PROJECT_CONTEXT.md
 

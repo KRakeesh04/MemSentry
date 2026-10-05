@@ -10,8 +10,14 @@ from memsentry.gui.main_window import MainWindow
 
 
 def main() -> None:
+    if sys.platform == "win32":
+        import ctypes
+
+        # Keep the taskbar identity tied to MemSentry rather than the Python interpreter.
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("MemSentry.Desktop")
     application = QApplication(sys.argv)
     application.setApplicationName("MemSentry")
+    application.setDesktopFileName("memsentry")
     application.setWindowIcon(application_icon())
     try:
         load_portable_configuration()

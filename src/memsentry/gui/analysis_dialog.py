@@ -119,7 +119,9 @@ class AnalysisDialog(QDialog):
         self.rules_button.clicked.connect(self._rules)
         rules_row.addWidget(self.rules_button)
         layout.addLayout(rules_row)
-        bundled = Path(__file__).resolve().parents[3] / "resources" / "yara"
+        from memsentry.resource_paths import resource_directory
+
+        bundled = resource_directory() / "yara"
         self.rule_paths = sorted(bundled.glob("*.yar")) + sorted(bundled.glob("*.yara"))
         self.rules.setText("; ".join(str(path) for path in self.rule_paths))
         yara_available = importlib.util.find_spec("yara") is not None

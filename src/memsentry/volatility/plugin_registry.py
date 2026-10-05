@@ -11,12 +11,11 @@ from typing import Any, cast
 
 from volatility3 import framework, plugins
 
+from memsentry.resource_paths import resource_directory
 from memsentry.volatility import os_utils
 from memsentry.volatility.os_utils import SUPPORTED_OPERATING_SYSTEMS
 
-_DEFAULT_REGISTRY_FILE = (
-    Path(__file__).resolve().parents[3] / "resources" / "plugin_registry.json"
-)
+_DEFAULT_REGISTRY_FILE = resource_directory() / "plugin_registry.json"
 
 
 class PluginRegistryError(RuntimeError):

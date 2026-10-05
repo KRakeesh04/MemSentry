@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -24,6 +24,8 @@ from memsentry.storage.repositories.finding_repository import FindingRepository
 
 class FindingsPage(QScrollArea):
     """Show findings persisted for the currently opened case."""
+
+    graph_requested = Signal(object, object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -133,6 +135,13 @@ class FindingsPage(QScrollArea):
             description.setWordWrap(True)
             description.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             card_layout.addWidget(description)
+            graph_button = QPushButton("Explore relationships")
+            graph_button.clicked.connect(
+                lambda checked=False, item=finding: self.graph_requested.emit(
+                    item.analysis_run_id, item.id
+                )
+            )
+            card_layout.addWidget(graph_button)
             self.findings_layout.addWidget(card)
 
     def _clear_findings(self) -> None:

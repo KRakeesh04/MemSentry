@@ -26,6 +26,7 @@ from memsentry.gui.pages.artifacts import ArtifactsPage
 from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.findings import FindingsPage
+from memsentry.gui.pages.investigation_graph import InvestigationGraphPage
 from memsentry.gui.pages.overview import OverviewPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
@@ -95,6 +96,8 @@ class MainWindow(QMainWindow):
         self.activity_page = ActivityPage(self.pages)
         self.findings_page = FindingsPage(self.pages)
         self.artifacts_page = ArtifactsPage(self.pages)
+        self.graph_page = InvestigationGraphPage(self.pages)
+        self.findings_page.graph_requested.connect(self._show_finding_graph)
         functional = {
             "Cases": self.cases_page,
             "Overview": self.overview_page,
@@ -102,6 +105,7 @@ class MainWindow(QMainWindow):
             "Artifacts": self.artifacts_page,
             "Activity": self.activity_page,
             "Findings": self.findings_page,
+            "Investigation Graph": self.graph_page,
         }
         for name in self.PAGE_NAMES:
             self.pages.addWidget(
@@ -112,7 +116,7 @@ class MainWindow(QMainWindow):
         self.job_status = status
         status.setObjectName("jobStatus")
         self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (4, 5, 6, 8, 9)))
+        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (6, 8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.case_opened.connect(self._open_case)
@@ -216,6 +220,8 @@ class MainWindow(QMainWindow):
         self.analysis_timer.stop()
         self.job_status.setText(f"Analysis {run.status} · {run.id}")
         self.overview_page.refresh()
+        self.findings_page.refresh()
+        self.graph_page.refresh()
         if run.error_message:
             self.overview_page.error.setText(run.error_message)
 
@@ -240,13 +246,29 @@ class MainWindow(QMainWindow):
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
+        self.findings_page.open_case(workspace, case)
+        self.graph_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)
+
+    def _show_finding_graph(self, run_id, finding_id) -> None:
+        self.graph_page.refresh()
+        index = self.graph_page.run_choice.findData(str(run_id))
+        if index >= 0:
+            self.graph_page.run_choice.setCurrentIndex(index)
+            key = str(finding_id)
+            self.graph_page.visible = self.graph_page.graph.neighborhood({key})
+            self.graph_page.render_graph()
+            if key in self.graph_page.node_items:
+                self.graph_page.node_items[key].setSelected(True)
+            self.sidebar.setCurrentRow(5)
 
     def _page_changed(self, index: int) -> None:
         if index == 3:  # Artifacts page index
             self.artifacts_page.refresh()
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
+        elif index == 4:
+            self.findings_page.refresh()
 
     def _intake_progress(self, message: str, value: int) -> None:
         overview = self.overview_page

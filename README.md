@@ -43,6 +43,16 @@ sudo apt-get install libegl1 libgl1 libglib2.0-0
 
 ## Run
 
+To prepare dependencies, build the portable application with PyInstaller, check the bundle, and launch it, run from the repository root:
+
+```bash
+python scripts/build.py --run
+```
+
+Use `python3` on Linux if `python` is unavailable. On Linux, `make run` does the same thing. Python **3.11–3.14** and internet access for the first dependency installation are required. The command creates an isolated environment in `build/venv/`; you do not need to activate it or install PyInstaller manually. Linux also needs the Qt system libraries listed above.
+
+For development, after completing the development setup:
+
 ```bash
 python -m memsentry
 ```
@@ -50,7 +60,7 @@ python -m memsentry
 1. In **Cases**, select a writable workspace and create or open a case.
 2. In **Evidence & Analysis**, register an existing memory image and verify its SHA-256.
 3. In **Overview**, choose **Analyze evidence**, select the image OS, plugins, symbols root, and optional YARA rules.
-4. Review plugin results, **Artifacts**, and **Activity**.
+4. Review plugin results, **Artifacts**, **Findings**, and **Activity**.
 
 The workspace stores `memsentry.sqlite3` and case outputs under `cases/`. Keep source evidence separate; analysis reads the image without modifying it and checks integrity before and after processing.
 
@@ -76,40 +86,26 @@ Use synthetic or authorised test data. Keep memory images, case output, and cred
 
 ## Portable setup
 
-Build on the target OS using the development environment above. This recipe creates a PyInstaller directory bundle; validate it on the target machine before distribution.
-
-Create `build/portable_entry.py` with:
-
-```python
-from memsentry.main import main
-
-if __name__ == "__main__":
-    main()
-```
-
-Run from the repository root (the command works in PowerShell and Bash):
+Build on the target OS and architecture. To build without launching the GUI:
 
 ```bash
-python -m PyInstaller --noconfirm --onedir --windowed --name MemSentry --specpath build --paths src --collect-all volatility3 --copy-metadata memsentry --add-data "../src/memsentry/storage/schema:memsentry/storage/schema" --add-data "../src/memsentry/gui/assets:memsentry/gui/assets" build/portable_entry.py
+python scripts/build.py
 ```
 
-The data paths are relative to the generated spec in `build/`. Copy the project resources beside the executable:
+The build uses the checked-in `MemSentry.spec`, generates PNG/Windows ICO assets from the application shield, and bundles Python, Qt, Volatility plugins, SQLite migrations, registry metadata, and correlation/YARA rules. It checks icon rendering, plugin discovery, database migration, and graph-page startup from outside the source tree. Existing `dist/MemSentry/` build output is replaced; keep evidence and workspaces elsewhere.
 
-**Windows PowerShell:**
+Launch the result directly on subsequent runs:
 
-```powershell
-Copy-Item -Recurse -Force resources dist/MemSentry/
-.\dist\MemSentry\MemSentry.exe
-```
+- Windows: `dist\MemSentry\MemSentry.exe`
+- Linux: `./dist/MemSentry/MemSentry`
 
-**Linux:**
+If your active environment already contains the application (editable installation), runtime dependencies, and PyInstaller, you can skip dependency installation:
 
 ```bash
-cp -r resources dist/MemSentry/
-./dist/MemSentry/MemSentry
+python scripts/build.py --no-install
 ```
 
-Copy or ZIP the **entire `dist/MemSentry/` folder**, including `_internal/` and `resources/`, for a compatible OS and architecture. Python is bundled; Linux still needs the host's Qt system libraries. Select a writable workspace on the portable drive and a symbols root in the analysis dialog. Confirm case creation, plugin discovery, and analysis with an authorised test image before sharing the bundle.
+Copy or ZIP the **entire `dist/MemSentry/` folder**, including `_internal/`. No manual resource-copy step is needed. Python is bundled; Linux still needs the host's Qt system libraries. Select a writable workspace and supply matching symbols in the analysis dialog. Symbols, evidence, and optional acquisition tools are not downloaded or bundled by the build command. The startup check does not replace target-machine testing with an authorised test image. Windows builds must be built and validated on Windows; Linux builds on Linux.
 
 For optional live capture, place separately obtained AVML (Linux) or WinPmem mini (Windows) in a `tools/` folder beside the executable. Add a `.env` file beside it with the applicable setting:
 

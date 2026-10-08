@@ -56,6 +56,7 @@ include = ["memsentry*"]
 
 [tool.setuptools.package-data]
 "memsentry.gui" = ["assets/*.svg"]
+"memsentry.storage" = ["schema/*.sql"]
 
 
 [tool.pytest.ini_options]

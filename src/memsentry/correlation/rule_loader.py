@@ -118,17 +118,6 @@ def get_default_rules_path() -> Path:
     Returns:
         Path to the default correlation_rules.yaml file
     """
-    # Try multiple possible locations for the rules file
-    possible_paths = [
-        Path(__file__).parent.parent.parent / "resources" / "rules" / "correlation_rules.yaml",
-        Path.cwd() / "resources" / "rules" / "correlation_rules.yaml",
-        Path(__file__).parent.parent.parent.parent / "resources" / "rules" / "correlation_rules.yaml",
-    ]
+    from memsentry.resource_paths import resource_directory
 
-    for path in possible_paths:
-        if path.exists():
-            return path
-
-    # Return the first path as default even if it doesn't exist
-    # (error handling will occur during loading)
-    return possible_paths[0]
+    return resource_directory() / "rules" / "correlation_rules.yaml"

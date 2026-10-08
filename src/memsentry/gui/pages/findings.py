@@ -43,6 +43,8 @@ class FindingCard(QFrame):
 class FindingsPage(QScrollArea):
     """Show findings persisted for the currently opened case."""
 
+    graph_requested = Signal(object, object)
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace_path = ""
@@ -230,7 +232,13 @@ class FindingsPage(QScrollArea):
             description.setWordWrap(True)
             description.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
             card_layout.addWidget(description)
-
+            graph_button = QPushButton("Explore relationships")
+            graph_button.clicked.connect(
+                lambda checked=False, item=finding: self.graph_requested.emit(
+                    item.analysis_run_id, item.id
+                )
+            )
+            card_layout.addWidget(graph_button)
             self.findings_layout.addWidget(card)
 
     def _show_finding_details(self, finding) -> None:

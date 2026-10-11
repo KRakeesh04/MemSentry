@@ -231,6 +231,7 @@ class InvestigationGraphPage(QWidget):
 
         # Checkbox: Related to findings only
         self.findings_only_check = QCheckBox("Findings & connected only")
+        self.findings_only_check.setChecked(True)
         self.findings_only_check.stateChanged.connect(self._apply_filters)
         top_bar.addWidget(self.findings_only_check)
 

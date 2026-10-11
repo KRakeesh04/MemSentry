@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QSizePolicy,
@@ -22,9 +21,11 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.gui.finding_details import FindingDetailsDialog
 from memsentry.models.case import Case
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
+from memsentry.storage.repositories.finding_evidence_repository import FindingEvidenceRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
 
 
@@ -309,31 +310,16 @@ class FindingsPage(QScrollArea):
         self.findings_container.updateGeometry()
 
     def _show_finding_details(self, finding) -> None:
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Finding details")
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-
-        confidence = (
-            f"{finding.confidence:.0%}"
-            if finding.confidence is not None
-            else "Not recorded"
-        )
-
-        dialog.setText(
-            f"{finding.title}\n\n"
-            f"{finding.description}"
-        )
-
-        dialog.setDetailedText(
-            f"Finding ID: {finding.id}\n"
-            f"Rule: {finding.rule_id}\n"
-            f"Severity: {finding.severity.value}\n"
-            f"Confidence: {confidence}\n"
-            f"Analysis run: {finding.analysis_run_id}\n"
-            f"Created: {finding.created_at:%Y-%m-%d %H:%M} UTC"
-        )
-
+        evidence = []
+        error = ""
+        try:
+            evidence = FindingEvidenceRepository(workspace_database(self.workspace_path)).list_by_finding(
+                finding.id)
+        except Exception as exc:
+            error = f"Supporting evidence could not be loaded: {exc}"
+        dialog = FindingDetailsDialog(finding, evidence, self, evidence_error=error)
         dialog.exec()
+        dialog.deleteLater()
 
     def _clear_findings(self) -> None:
         self._cards.clear()

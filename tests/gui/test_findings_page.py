@@ -1,18 +1,22 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from threading import Event
+from uuid import uuid4
 
 import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor, QPalette
-from PySide6.QtWidgets import QLabel, QMessageBox, QPushButton
+from PySide6.QtWidgets import QLabel, QPushButton
 
 from memsentry.app.case_service import workspace_database
 from memsentry.app.intake_service import IntakeRequest, IntakeService
+from memsentry.gui.finding_details import FindingDetailsDialog
 from memsentry.gui.pages.findings import FindingsPage
 from memsentry.gui.theme import workspace_stylesheet
 from memsentry.models.analysis_run import AnalysisRunCreate, HostOS
-from memsentry.models.finding import FindingCreate, FindingSeverity
+from memsentry.models.finding import Finding, FindingCreate, FindingSeverity
+from memsentry.models.finding_evidence import FindingEvidence
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
@@ -121,13 +125,57 @@ def test_cards_reflow_without_clipping_and_keep_filters(qtbot, qapp, tmp_path, m
         assert page.findings_layout.count() == 0
         assert page.empty_state.isVisible()
         page.severity_filter.setCurrentText("All severities")
-        monkeypatch.setattr(QMessageBox, "exec", lambda _: 0)
+        monkeypatch.setattr(FindingDetailsDialog, "exec", lambda _: 0)
         card = page._cards[0]
         card.setFocus()
         with qtbot.waitSignal(card.clicked):
             qtbot.keyClick(card, Qt.Key.Key_Return)
     finally:
         qapp.setPalette(original_palette)
+
+
+@pytest.mark.parametrize("background", ["#11151C", "#F1F5F9"])
+def test_details_show_full_record_and_provenance(qtbot, qapp, tmp_path, background):
+    original = qapp.palette()
+    palette = QPalette(original)
+    palette.setColor(QPalette.ColorRole.Window, QColor(background))
+    qapp.setPalette(palette)
+    try:
+        finding = Finding(
+            id=uuid4(), analysis_run_id=uuid4(), rule_id="MS-R006",
+            title="Unbacked executable module", severity=FindingSeverity.MEDIUM,
+            confidence=.5, created_at=datetime(2026, 10, 11, 12, 30, tzinfo=UTC),
+            description="A process has an executable module without a corresponding mapped file path.\n"
+                        "Process: csrss.exe (PID: 300). Unbacked executable module detected.\n"
+                        "Full recorded explanation: " + "Inspect the module mapping. " * 12 + "END.")
+        link = FindingEvidence(
+            id=uuid4(), finding_id=finding.id, plugin_run_id=uuid4(), artifact_type="module",
+            source_reference="synthetic-row-1", explanation="Recorded module context.",
+            supporting_data={"pid": 300, "path": "<unmapped>", "address": "0x1000"})
+        dialog = FindingDetailsDialog(finding, [link])
+        qtbot.addWidget(dialog)
+        dialog.show()
+        qtbot.wait(30)
+        text = dialog.details.toPlainText()
+        assert "END." in text
+        assert str(finding.id) in text and str(finding.analysis_run_id) in text
+        assert "2026-10-11 12:30:00" in text
+        assert "<unmapped>" in text and "synthetic-row-1" in text
+        assert str(link.plugin_run_id) in text
+        assert dialog.details.isReadOnly()
+        assert not dialog.details.openExternalLinks()
+        assert dialog.details.horizontalScrollBar().maximum() == 0
+        dialog.grab().save(str(tmp_path / "finding-details.png"))
+        dialog.resize(540, 460)
+        qtbot.wait(30)
+        assert dialog.details.horizontalScrollBar().maximum() == 0
+        assert dialog.details.verticalScrollBar().maximum() > 0
+        assert "END." in dialog.details.toPlainText()
+        close = next(b for b in dialog.findChildren(QPushButton) if b.text() == "Close")
+        close.click()
+        assert not dialog.isVisible()
+    finally:
+        qapp.setPalette(original)
 
 
 # def test_main_window_findings_integration(qtbot, tmp_path):

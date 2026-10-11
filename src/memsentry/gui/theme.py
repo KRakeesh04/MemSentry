@@ -53,7 +53,7 @@ def workspace_stylesheet() -> str:
             background: rgba(251, 146, 60, 0.12);
         }}
         #workspace QLabel#severityBadge[severity="medium"] {{
-            color: #FACC15;
+            color: {"#FACC15" if dark else "#785A00"};
             background: rgba(250, 204, 21, 0.12);
         }}
         #workspace QLabel#severityBadge[severity="low"] {{
@@ -74,10 +74,11 @@ def workspace_stylesheet() -> str:
             border-radius: 10px;
         }}
 
-        #workspace QFrame#findingCard:hover {{
+        #workspace QFrame#findingCard:hover, #workspace QFrame#findingCard:focus {{
             border: 1px solid {accent};
             background: {selected};
         }}
+        #workspace QLabel#findingDetailsHint {{ color: {accent}; }}
         #workspace QFrame#successCard {{
             background: {"#182A24" if dark else "#ECFDF5"};
             border: 1px solid {"#2F6B57" if dark else "#86EFAC"};

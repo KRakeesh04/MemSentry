@@ -19,9 +19,7 @@ from PySide6.QtWidgets import (
     QApplication,
     QGraphicsItem,
     QGraphicsLineItem,
-    QGraphicsPathItem,
     QGraphicsScene,
-    QGraphicsTextItem,
     QGraphicsView,
     QWidget,
 )
@@ -58,6 +56,7 @@ class NodeGraphicsItem(QGraphicsItem):
         self.height = 46.0
         self.is_hovered = False
         self.is_active = False
+        self.is_dimmed = False
 
         self.setAcceptHoverEvents(True)
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
@@ -81,7 +80,10 @@ class NodeGraphicsItem(QGraphicsItem):
         bg_color = QColor(node_color["bg"])
         border_color = QColor(node_color["border"])
 
-        if self.is_active or self.isSelected():
+        if self.is_dimmed:
+            bg_color.setAlpha(70)
+            border_color.setAlpha(80)
+        elif self.is_active or self.isSelected():
             border_color = QColor("#FACC15")  # Bright Yellow highlight
             painter.setPen(QPen(border_color, 3.0))
         elif self.is_hovered:
@@ -134,7 +136,11 @@ class NodeGraphicsItem(QGraphicsItem):
             painter.drawPath(path)
 
         # Label Text
-        painter.setPen(QPen(QColor(node_color["text"])))
+        text_color = QColor(node_color["text"])
+        if self.is_dimmed:
+            text_color.setAlpha(80)
+
+        painter.setPen(QPen(text_color))
         font = QFont("Segoe UI", 9)
         font.setBold(True)
         painter.setFont(font)
@@ -148,7 +154,12 @@ class NodeGraphicsItem(QGraphicsItem):
         # Subtitle Text
         sub_font = QFont("Segoe UI", 7)
         painter.setFont(sub_font)
-        painter.setPen(QPen(QColor(255, 255, 255, 210)))
+        subtitle_color = QColor(255, 255, 255, 210)
+
+        if self.is_dimmed:
+            subtitle_color.setAlpha(70)
+
+        painter.setPen(QPen(subtitle_color))
         sub_rect = QRectF(-self.width / 2 + 6, -self.height / 2 + 22, self.width - 12, 16)
         elided_sub = painter.fontMetrics().elidedText(
             self.node.subtitle, Qt.TextElideMode.ElideRight, int(sub_rect.width())
@@ -178,6 +189,8 @@ class EdgeGraphicsItem(QGraphicsLineItem):
         self.edge = edge
         self.source_item = source_item
         self.target_item = target_item
+        self.is_dimmed = False
+        self.is_highlighted = False
         self.setZValue(1)
         self.update_position()
 
@@ -204,8 +217,19 @@ class EdgeGraphicsItem(QGraphicsLineItem):
         arrow_tip_x = p2.x() - ux * target_radius
         arrow_tip_y = p2.y() - uy * target_radius
 
-        edge_color = QColor(140, 155, 175, 160)
-        painter.setPen(QPen(edge_color, 1.4, Qt.PenStyle.SolidLine))
+        if self.is_highlighted:
+            edge_color = QColor("#60A5FA")
+            edge_width = 2.4
+        elif self.is_dimmed:
+            edge_color = QColor(140, 155, 175, 35)
+            edge_width = 1.0
+        else:
+            edge_color = QColor(140, 155, 175, 130)
+            edge_width = 1.4
+
+        painter.setPen(
+            QPen(edge_color, edge_width, Qt.PenStyle.SolidLine)
+        )
         painter.drawLine(QPointF(p1.x(), p1.y()), QPointF(arrow_tip_x, arrow_tip_y))
 
         # Arrow head
@@ -227,18 +251,6 @@ class EdgeGraphicsItem(QGraphicsLineItem):
 
         painter.setBrush(QBrush(edge_color))
         painter.drawPath(arrow_path)
-
-        # Draw edge label in midpoint
-        if self.edge.label:
-            mid_x = (p1.x() + arrow_tip_x) / 2
-            mid_y = (p1.y() + arrow_tip_y) / 2
-            painter.setFont(QFont("Segoe UI", 7))
-            painter.setPen(QPen(QColor(165, 176, 192, 220)))
-            painter.drawText(
-                QRectF(mid_x - 35, mid_y - 12, 70, 16),
-                Qt.AlignmentFlag.AlignCenter,
-                self.edge.label,
-            )
 
 
 class GraphCanvas(QGraphicsView):
@@ -274,6 +286,23 @@ class GraphCanvas(QGraphicsView):
             if self._current_scale > 0.25:
                 self.scale(1.0 / zoom_factor, 1.0 / zoom_factor)
                 self._current_scale /= zoom_factor
+
+    def mousePressEvent(self, event) -> None:
+        item = self.itemAt(event.pos())
+
+        if item is None:
+            for node_item in self.node_items.values():
+                node_item.is_active = False
+                node_item.is_dimmed = False
+                node_item.setSelected(False)
+                node_item.update()
+
+            for edge_item in self.edge_items:
+                edge_item.is_highlighted = False
+                edge_item.is_dimmed = False
+                edge_item.update()
+
+        super().mousePressEvent(event)
 
     def reset_view(self) -> None:
         """Fit all graph contents into the current view port."""
@@ -355,7 +384,28 @@ class GraphCanvas(QGraphicsView):
         self.reset_view()
 
     def _on_node_clicked(self, node: GraphNode) -> None:
+        connected_ids = {node.id}
+
+        for edge_item in self.edge_items:
+            edge = edge_item.edge
+
+            connected = (
+                edge.source_id == node.id
+                or edge.target_id == node.id
+            )
+
+            edge_item.is_highlighted = connected
+            edge_item.is_dimmed = not connected
+
+            if connected:
+                connected_ids.add(edge.source_id)
+                connected_ids.add(edge.target_id)
+
+            edge_item.update()
+
         for nid, item in self.node_items.items():
-            item.is_active = (nid == node.id)
+            item.is_active = nid == node.id
+            item.is_dimmed = nid not in connected_ids
             item.update()
+
         self.node_selected.emit(node)

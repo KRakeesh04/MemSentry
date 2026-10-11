@@ -250,17 +250,84 @@ class InvestigationGraphPage(QWidget):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(1)
 
-        # Graph Canvas
-        self.canvas = GraphCanvas(splitter)
-        self.canvas.node_selected.connect(self._on_node_selected)
-        splitter.addWidget(self.canvas)
+        # Graph area
+        graph_container = QWidget(splitter)
+        graph_layout = QVBoxLayout(graph_container)
+        graph_layout.setContentsMargins(0, 0, 0, 0)
+        graph_layout.setSpacing(6)
 
-        # Details Panel
+        self.canvas = GraphCanvas(graph_container)
+        self.canvas.node_selected.connect(self._on_node_selected)
+
+        graph_layout.addWidget(self.canvas, 1)
+
+        # Control Row
+        controls = QHBoxLayout()
+        controls.setSpacing(6)
+
+        zoom_in = QPushButton("+")
+        zoom_in.setObjectName("graphControlButton")
+        zoom_in.setToolTip("Zoom in")
+        zoom_in.clicked.connect(self.canvas.zoom_in)
+
+        zoom_out = QPushButton("−")
+        zoom_out.setObjectName("graphControlButton")
+        zoom_out.setToolTip("Zoom out")
+        zoom_out.clicked.connect(self.canvas.zoom_out)
+
+        fit = QPushButton("Fit")
+        fit.setObjectName("graphFitButton")
+        fit.setToolTip("Fit graph to view")
+        fit.clicked.connect(self.canvas.reset_view)
+
+        pan_left = QPushButton("←")
+        pan_left.setObjectName("graphControlButton")
+        pan_left.setToolTip("Pan left")
+        pan_left.clicked.connect(self.canvas.pan_left)
+
+        pan_up = QPushButton("↑")
+        pan_up.setObjectName("graphControlButton")
+        pan_up.setToolTip("Pan up")
+        pan_up.clicked.connect(self.canvas.pan_up)
+
+        pan_down = QPushButton("↓")
+        pan_down.setObjectName("graphControlButton")
+        pan_down.setToolTip("Pan down")
+        pan_down.clicked.connect(self.canvas.pan_down)
+
+        pan_right = QPushButton("→")
+        pan_right.setObjectName("graphControlButton")
+        pan_right.setToolTip("Pan right")
+        pan_right.clicked.connect(self.canvas.pan_right)
+
+        controls.setSpacing(5)
+
+        controls.addWidget(zoom_in)
+        controls.addWidget(zoom_out)
+        controls.addWidget(fit)
+
+        controls.addSpacing(12)
+
+        controls.addWidget(pan_left)
+        controls.addWidget(pan_up)
+        controls.addWidget(pan_down)
+        controls.addWidget(pan_right)
+
+        controls.addStretch()
+
+        graph_layout.addLayout(controls)
+        splitter.addWidget(graph_container)
+
+        # ---------------- DETAILS PANEL ----------------
         self.details_panel = EntityDetailsPanel(splitter)
         self.details_panel.navigate_findings_requested.connect(self.findings_page_requested.emit)
         self.details_panel.setMinimumWidth(260)
         self.details_panel.setMaximumWidth(360)
         splitter.addWidget(self.details_panel)
+
+        # ---------------- BOTTOM LEGEND & METRICS ----------------
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setSpacing(16)
 
         splitter.setSizes([700, 300])
         main_layout.addWidget(splitter, 1)

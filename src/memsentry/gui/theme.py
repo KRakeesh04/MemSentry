@@ -108,4 +108,78 @@ def workspace_stylesheet() -> str:
             background: {surface}; color: {text}; padding: 24px;
         }}
         #workspace QPushButton#fileDropArea:hover {{ border-color: {accent}; background: {selected}; }}
+        #workspace QPushButton#graphControlButton {{
+            min-width: 34px;
+            max-width: 34px;
+            min-height: 30px;
+            max-height: 30px;
+
+            padding: 0px;
+
+            background-color: #182230;
+            color: #CBD5E1;
+
+            border: 1px solid #334155;
+            border-radius: 6px;
+
+            font-size: 14px;
+            font-weight: 600;
+        }}
+
+        #workspace QPushButton#graphControlButton:hover {{
+            background-color: #223043;
+            color: #FFFFFF;
+            border-color: #475569;
+        }}
+
+        #workspace QPushButton#graphControlButton:pressed {{
+            background-color: #0F172A;
+            color: #FFFFFF;
+            border-color: #3B82F6;
+        }}
+
+        #workspace QPushButton#graphControlButton:disabled {{
+            background-color: #111827;
+            color: #64748B;
+            border-color: #253244;
+        }}
+
+
+        /* Wider button used for "Fit" */
+        #workspace QPushButton#graphFitButton {{
+            min-width: 46px;
+            max-width: 46px;
+            min-height: 30px;
+            max-height: 30px;
+
+            padding: 0px 6px;
+
+            background-color: #182230;
+            color: #CBD5E1;
+
+            border: 1px solid #334155;
+            border-radius: 6px;
+
+            font-size: 12px;
+            font-weight: 600;
+        }}
+
+        #workspace QPushButton#graphFitButton:hover {{
+            background-color: #223043;
+            color: #FFFFFF;
+            border-color: #475569;
+        }}
+
+        #workspace QPushButton#graphFitButton:pressed {{
+            background-color: #0F172A;
+            color: #FFFFFF;
+            border-color: #3B82F6;
+        }}
+
+        #workspace QPushButton#graphFitButton:disabled {{
+            background-color: #111827;
+            color: #64748B;
+            border-color: #253244;
+        }}
+
     """

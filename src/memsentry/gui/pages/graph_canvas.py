@@ -304,6 +304,41 @@ class GraphCanvas(QGraphicsView):
 
         super().mousePressEvent(event)
 
+    def zoom_in(self) -> None:
+        zoom_factor = 1.15
+
+        if self._current_scale < 4.0:
+            self.scale(zoom_factor, zoom_factor)
+            self._current_scale *= zoom_factor
+
+
+    def zoom_out(self) -> None:
+        zoom_factor = 1.15
+
+        if self._current_scale > 0.25:
+            self.scale(1.0 / zoom_factor, 1.0 / zoom_factor)
+            self._current_scale /= zoom_factor
+
+
+    def pan_left(self) -> None:
+        bar = self.horizontalScrollBar()
+        bar.setValue(bar.value() - 100)
+
+
+    def pan_right(self) -> None:
+        bar = self.horizontalScrollBar()
+        bar.setValue(bar.value() + 100)
+
+
+    def pan_up(self) -> None:
+        bar = self.verticalScrollBar()
+        bar.setValue(bar.value() - 100)
+
+
+    def pan_down(self) -> None:
+        bar = self.verticalScrollBar()
+        bar.setValue(bar.value() + 100)
+
     def reset_view(self) -> None:
         """Fit all graph contents into the current view port."""
         self.resetTransform()

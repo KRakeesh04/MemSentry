@@ -333,9 +333,9 @@ class GraphCanvas(QGraphicsView):
                 node.y = start_y + idx * y_spacing
 
         layout_column(col_evidence, -x_spacing * 1.5)
-        layout_column(col_process, -x_spacing * 0.3)
-        layout_column(col_network, x_spacing * 1.0, start_y_offset=-60.0)
-        layout_column(col_finding, x_spacing * 1.0, start_y_offset=len(col_network) * y_spacing / 2.0)
+        layout_column(col_process, -x_spacing * 0.5)
+        layout_column(col_network, x_spacing * 0.5)
+        layout_column(col_finding, x_spacing * 1.5)
 
         # Create Node items
         for node in nodes_to_render.values():

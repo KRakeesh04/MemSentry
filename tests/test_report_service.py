@@ -56,7 +56,7 @@ def registered_db(tmp_path):
 
 
 def test_report_service_basic_aggregation(registered_db):
-    db, case, evidence = registered_db
+    db, case, _evidence = registered_db
 
     service = ReportService(
         CaseRepository(db),
@@ -81,7 +81,7 @@ def test_report_service_basic_aggregation(registered_db):
 
 
 def test_report_service_with_options(registered_db):
-    db, case, evidence = registered_db
+    db, case, _evidence = registered_db
 
     service = ReportService(
         CaseRepository(db),
@@ -153,7 +153,7 @@ def test_html_exporter(registered_db, tmp_path):
 
 
 def test_missing_case(registered_db):
-    db, case, evidence = registered_db
+    db, _case, _evidence = registered_db
     service = ReportService(
         CaseRepository(db),
         EvidenceRepository(db),

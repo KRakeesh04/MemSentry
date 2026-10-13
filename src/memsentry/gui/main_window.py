@@ -109,7 +109,6 @@ class MainWindow(QMainWindow):
             "Activity": self.activity_page,
             "Findings": self.findings_page,
             "Investigation Graph": self.graph_page,
-            "Activity": self.activity_page,
         }
         for name in self.PAGE_NAMES:
             self.pages.addWidget(

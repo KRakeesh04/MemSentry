@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Event
-from uuid import uuid4
 
 from memsentry.app.case_service import workspace_database
 from memsentry.app.intake_service import IntakeRequest, IntakeService
@@ -52,7 +51,7 @@ def test_graph_builder_empty_case(tmp_path: Path):
     graph = GraphBuilder.build_for_case(tmp_path, case)
     # Should contain 1 evidence node, 0 processes, 0 edges
     assert len(graph.nodes) == 1
-    ev_node = list(graph.nodes.values())[0]
+    ev_node = next(iter(graph.nodes.values()))
     assert ev_node.node_type == "evidence"
     assert ev_node.label == "memory.mem"
     assert len(graph.edges) == 0
@@ -88,7 +87,7 @@ def test_graph_builder_entities_and_relationships(tmp_path: Path):
 
     art_repo = ArtifactRepository(database)
     # 1. Parent process: PID 100
-    p1 = art_repo.create(
+    art_repo.create(
         ArtifactCreate(
             analysis_run_id=run.id,
             plugin_run_id=plugin_run.id,
@@ -205,8 +204,19 @@ def test_investigation_graph_page_gui(qtbot, tmp_path: Path):
 
     # Open case
     page.open_case(str(tmp_path), case)
+    assert page.findings_only_check.isChecked()
+    assert "0 Entities" in page.status_metrics.text()
+    assert not page.canvas.scene().items()
+
+    # Show evidence without findings before testing the search filter.
+    page.findings_only_check.setChecked(False)
     assert "1 Entities" in page.status_metrics.text()
     assert "0 Relationships" in page.status_metrics.text()
+    assert len(page.canvas.scene().items()) == 1
+    node = next(iter(page.raw_graph_data.nodes.values()))
+    page._on_node_selected(node)
+    assert page.details_panel.container.layout().count() > 1
+    page.details_panel.show_empty()
 
     # Search filter testing
     page.search_input.setText("nonexistent")
@@ -214,3 +224,7 @@ def test_investigation_graph_page_gui(qtbot, tmp_path: Path):
 
     page.search_input.setText("memory")
     assert "1 Entities" in page.status_metrics.text()
+
+    page.findings_only_check.setChecked(True)
+    assert "0 Entities" in page.status_metrics.text()
+    assert not page.canvas.scene().items()

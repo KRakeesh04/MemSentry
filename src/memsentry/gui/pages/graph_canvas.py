@@ -3,20 +3,21 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from PySide6.QtCore import QPointF, QRectF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
     QFont,
+    QMouseEvent,
     QPainter,
     QPainterPath,
     QPen,
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
-    QApplication,
     QGraphicsItem,
     QGraphicsLineItem,
     QGraphicsScene,
@@ -24,7 +25,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from memsentry.graph.models import GraphData, GraphEdge, GraphNode, NodeType
+from memsentry.graph.models import GraphData, GraphEdge, GraphNode
 
 NODE_COLORS = {
     "evidence": {"bg": "#3B82F6", "border": "#1D4ED8", "text": "#FFFFFF"},      # Blue
@@ -260,8 +261,8 @@ class GraphCanvas(QGraphicsView):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.scene = QGraphicsScene(self)
-        self.setScene(self.scene)
+        self._graph_scene = QGraphicsScene(self)
+        self.setScene(self._graph_scene)
 
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
@@ -287,7 +288,7 @@ class GraphCanvas(QGraphicsView):
                 self.scale(1.0 / zoom_factor, 1.0 / zoom_factor)
                 self._current_scale /= zoom_factor
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         item = self.itemAt(event.pos())
 
         if item is None:
@@ -343,9 +344,9 @@ class GraphCanvas(QGraphicsView):
         """Fit all graph contents into the current view port."""
         self.resetTransform()
         self._current_scale = 1.0
-        if not self.scene.items():
+        if not self._graph_scene.items():
             return
-        rect = self.scene.itemsBoundingRect()
+        rect = self._graph_scene.itemsBoundingRect()
         if not rect.isEmpty():
             self.fitInView(rect.adjusted(-50, -50, 50, 50), Qt.AspectRatioMode.KeepAspectRatio)
             # Update _current_scale estimate
@@ -357,7 +358,7 @@ class GraphCanvas(QGraphicsView):
         visible_node_ids: set[str] | None = None,
     ) -> None:
         """Populate scene with nodes and edges using a hierarchical column layout."""
-        self.scene.clear()
+        self._graph_scene.clear()
         self.node_items.clear()
         self.edge_items.clear()
 
@@ -404,7 +405,7 @@ class GraphCanvas(QGraphicsView):
         # Create Node items
         for node in nodes_to_render.values():
             item = NodeGraphicsItem(node, self._on_node_clicked)
-            self.scene.addItem(item)
+            self._graph_scene.addItem(item)
             self.node_items[node.id] = item
 
         # Create Edges
@@ -413,7 +414,7 @@ class GraphCanvas(QGraphicsView):
                 source_item = self.node_items[edge.source_id]
                 target_item = self.node_items[edge.target_id]
                 edge_item = EdgeGraphicsItem(edge, source_item, target_item)
-                self.scene.addItem(edge_item)
+                self._graph_scene.addItem(edge_item)
                 self.edge_items.append(edge_item)
 
         self.reset_view()

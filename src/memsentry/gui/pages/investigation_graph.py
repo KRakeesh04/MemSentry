@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -57,9 +55,9 @@ class EntityDetailsPanel(QScrollArea):
         self.setObjectName("entityDetailsPanel")
 
         self.container = QWidget()
-        self.layout = QVBoxLayout(self.container)
-        self.layout.setContentsMargins(16, 16, 16, 16)
-        self.layout.setSpacing(12)
+        self.details_layout = QVBoxLayout(self.container)
+        self.details_layout.setContentsMargins(16, 16, 16, 16)
+        self.details_layout.setSpacing(12)
         self.setWidget(self.container)
 
         self.show_empty()
@@ -68,13 +66,13 @@ class EntityDetailsPanel(QScrollArea):
         self._clear()
         title = QLabel("Selected Entity")
         title.setObjectName("sectionTitle")
-        self.layout.addWidget(title)
+        self.details_layout.addWidget(title)
 
         hint = QLabel("Click any node on the graph canvas to inspect its forensic properties and relationships.")
         hint.setObjectName("muted")
         hint.setWordWrap(True)
-        self.layout.addWidget(hint)
-        self.layout.addStretch()
+        self.details_layout.addWidget(hint)
+        self.details_layout.addStretch()
 
     def display_node(self, node: GraphNode, graph_data: GraphData) -> None:
         self._clear()
@@ -83,12 +81,12 @@ class EntityDetailsPanel(QScrollArea):
         type_badge = QLabel(f"ENTITY TYPE: {node.node_type.upper()}")
         type_badge.setObjectName("muted")
         type_badge.setStyleSheet("font-size: 11px; font-weight: bold;")
-        self.layout.addWidget(type_badge)
+        self.details_layout.addWidget(type_badge)
 
         name_lbl = QLabel(node.label)
         name_lbl.setObjectName("sectionTitle")
         name_lbl.setWordWrap(True)
-        self.layout.addWidget(name_lbl)
+        self.details_layout.addWidget(name_lbl)
 
         # Related connected nodes
         incoming = [e for e in graph_data.edges if e.target_id == node.id]
@@ -97,15 +95,15 @@ class EntityDetailsPanel(QScrollArea):
         if node.node_type == "process":
             pid = node.metadata.get("pid")
             ppid = node.metadata.get("ppid")
-            self.layout.addWidget(_info_row("Process Name", str(node.metadata.get("process_name", node.label))))
-            self.layout.addWidget(_info_row("PID", str(pid) if pid is not None else "N/A"))
-            self.layout.addWidget(_info_row("Parent PID (PPID)", str(ppid) if ppid is not None else "N/A"))
+            self.details_layout.addWidget(_info_row("Process Name", str(node.metadata.get("process_name", node.label))))
+            self.details_layout.addWidget(_info_row("PID", str(pid) if pid is not None else "N/A"))
+            self.details_layout.addWidget(_info_row("Parent PID (PPID)", str(ppid) if ppid is not None else "N/A"))
             if node.metadata.get("evidence_name"):
-                self.layout.addWidget(_info_row("Evidence Source", str(node.metadata["evidence_name"])))
+                self.details_layout.addWidget(_info_row("Evidence Source", str(node.metadata["evidence_name"])))
             if node.metadata.get("created_at"):
-                self.layout.addWidget(_info_row("Created At", str(node.metadata["created_at"])))
+                self.details_layout.addWidget(_info_row("Created At", str(node.metadata["created_at"])))
             if node.metadata.get("cmdline"):
-                self.layout.addWidget(_info_row("Command Line", str(node.metadata["cmdline"])))
+                self.details_layout.addWidget(_info_row("Command Line", str(node.metadata["cmdline"])))
 
             # Connected endpoints & findings
             endpoints = [
@@ -114,7 +112,7 @@ class EntityDetailsPanel(QScrollArea):
                 if e.target_id in graph_data.nodes and graph_data.nodes[e.target_id].node_type == "network"
             ]
             if endpoints:
-                self.layout.addWidget(_info_row("Network Endpoints", ", ".join(endpoints)))
+                self.details_layout.addWidget(_info_row("Network Endpoints", ", ".join(endpoints)))
 
             findings = [
                 graph_data.nodes[e.source_id].label
@@ -122,19 +120,19 @@ class EntityDetailsPanel(QScrollArea):
                 if e.source_id in graph_data.nodes and graph_data.nodes[e.source_id].node_type == "finding"
             ]
             if findings:
-                self.layout.addWidget(_info_row("Related Findings", "; ".join(findings)))
+                self.details_layout.addWidget(_info_row("Related Findings", "; ".join(findings)))
 
         elif node.node_type == "network":
             meta = node.metadata
             endpoint = f"{meta.get('remote_address') or meta.get('local_address')}:{meta.get('remote_port') or meta.get('local_port')}"
-            self.layout.addWidget(_info_row("Endpoint", endpoint))
-            self.layout.addWidget(_info_row("Protocol", str(meta.get("protocol", "TCP"))))
+            self.details_layout.addWidget(_info_row("Endpoint", endpoint))
+            self.details_layout.addWidget(_info_row("Protocol", str(meta.get("protocol", "TCP"))))
             if meta.get("state"):
-                self.layout.addWidget(_info_row("Connection State", str(meta["state"])))
+                self.details_layout.addWidget(_info_row("Connection State", str(meta["state"])))
             if meta.get("local_address"):
-                self.layout.addWidget(_info_row("Local Address", f"{meta.get('local_address')}:{meta.get('local_port')}"))
+                self.details_layout.addWidget(_info_row("Local Address", f"{meta.get('local_address')}:{meta.get('local_port')}"))
             if meta.get("remote_address"):
-                self.layout.addWidget(_info_row("Remote Address", f"{meta.get('remote_address')}:{meta.get('remote_port')}"))
+                self.details_layout.addWidget(_info_row("Remote Address", f"{meta.get('remote_address')}:{meta.get('remote_port')}"))
 
             # Parent processes
             processes = [
@@ -143,17 +141,17 @@ class EntityDetailsPanel(QScrollArea):
                 if e.source_id in graph_data.nodes and graph_data.nodes[e.source_id].node_type == "process"
             ]
             if processes:
-                self.layout.addWidget(_info_row("Owner Process", ", ".join(processes)))
+                self.details_layout.addWidget(_info_row("Owner Process", ", ".join(processes)))
 
         elif node.node_type == "finding":
             meta = node.metadata
-            self.layout.addWidget(_info_row("Finding Title", str(meta.get("title", node.label))))
-            self.layout.addWidget(_info_row("Severity", str(meta.get("severity", "N/A")).upper()))
-            self.layout.addWidget(_info_row("Rule ID", str(meta.get("rule_id", "N/A"))))
+            self.details_layout.addWidget(_info_row("Finding Title", str(meta.get("title", node.label))))
+            self.details_layout.addWidget(_info_row("Severity", str(meta.get("severity", "N/A")).upper()))
+            self.details_layout.addWidget(_info_row("Rule ID", str(meta.get("rule_id", "N/A"))))
             conf = meta.get("confidence")
-            self.layout.addWidget(_info_row("Confidence", f"{conf:.0%}" if isinstance(conf, float) else "Not recorded"))
+            self.details_layout.addWidget(_info_row("Confidence", f"{conf:.0%}" if isinstance(conf, float) else "Not recorded"))
             if meta.get("description"):
-                self.layout.addWidget(_info_row("Description", str(meta["description"])))
+                self.details_layout.addWidget(_info_row("Description", str(meta["description"])))
 
             # Related processes
             flagged = [
@@ -162,29 +160,31 @@ class EntityDetailsPanel(QScrollArea):
                 if e.target_id in graph_data.nodes and graph_data.nodes[e.target_id].node_type == "process"
             ]
             if flagged:
-                self.layout.addWidget(_info_row("Target Process", ", ".join(flagged)))
+                self.details_layout.addWidget(_info_row("Target Process", ", ".join(flagged)))
 
             view_btn = QPushButton("View in Findings Page")
             view_btn.clicked.connect(self.navigate_findings_requested.emit)
-            self.layout.addWidget(view_btn)
+            self.details_layout.addWidget(view_btn)
 
         elif node.node_type == "evidence":
             meta = node.metadata
-            self.layout.addWidget(_info_row("Evidence Name", str(meta.get("filename", node.label))))
-            self.layout.addWidget(_info_row("Operating System", str(meta.get("operating_system", "N/A")).upper()))
+            self.details_layout.addWidget(_info_row("Evidence Name", str(meta.get("filename", node.label))))
+            self.details_layout.addWidget(_info_row("Operating System", str(meta.get("operating_system", "N/A")).upper()))
             size = meta.get("size_bytes")
             size_mb = f"{size / (1024 * 1024):.2f} MB" if isinstance(size, (int, float)) else "N/A"
-            self.layout.addWidget(_info_row("File Size", size_mb))
-            self.layout.addWidget(_info_row("SHA-256 Hash", str(meta.get("sha256", "N/A"))))
-            self.layout.addWidget(_info_row("Verification Status", str(meta.get("status", "verified")).capitalize()))
+            self.details_layout.addWidget(_info_row("File Size", size_mb))
+            self.details_layout.addWidget(_info_row("SHA-256 Hash", str(meta.get("sha256", "N/A"))))
+            self.details_layout.addWidget(_info_row("Verification Status", str(meta.get("status", "verified")).capitalize()))
 
-        self.layout.addStretch()
+        self.details_layout.addStretch()
 
     def _clear(self) -> None:
-        while self.layout.count():
-            item = self.layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+        while self.details_layout.count():
+            item = self.details_layout.takeAt(0)
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
 
 
 class InvestigationGraphPage(QWidget):
@@ -270,7 +270,7 @@ class InvestigationGraphPage(QWidget):
         zoom_in.setToolTip("Zoom in")
         zoom_in.clicked.connect(self.canvas.zoom_in)
 
-        zoom_out = QPushButton("−")
+        zoom_out = QPushButton("-")
         zoom_out.setObjectName("graphControlButton")
         zoom_out.setToolTip("Zoom out")
         zoom_out.clicked.connect(self.canvas.zoom_out)

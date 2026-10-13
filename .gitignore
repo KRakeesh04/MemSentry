@@ -77,9 +77,6 @@ desktop.ini
 *.swp
 *.swo
 
-# Generated Reports
-reports/
-
 # Generated Documentation
 site/
 
@@ -105,8 +102,6 @@ config.local.yaml
 build/
 dist/
 
-
-MemSentry.spec
 
 CORE-FUNCTIONALITY.md
 PROJECT_CONTEXT.md

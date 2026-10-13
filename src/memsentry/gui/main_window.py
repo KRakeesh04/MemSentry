@@ -28,6 +28,7 @@ from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.findings import FindingsPage
 from memsentry.gui.pages.investigation_graph import InvestigationGraphPage
 from memsentry.gui.pages.overview import OverviewPage
+from memsentry.gui.pages.reports import ReportsPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
 from memsentry.models.analysis_run import AnalysisRun
@@ -98,11 +99,14 @@ class MainWindow(QMainWindow):
         self.artifacts_page = ArtifactsPage(self.pages)
         self.graph_page = InvestigationGraphPage(self.pages)
         self.graph_page.findings_page_requested.connect(lambda: self.sidebar.setCurrentRow(4))
+        self.reports_page = ReportsPage(self.pages)
         functional = {
             "Cases": self.cases_page,
             "Overview": self.overview_page,
             "Evidence & Analysis": self.evidence_page,
             "Artifacts": self.artifacts_page,
+            "Reports": self.reports_page,
+            "Activity": self.activity_page,
             "Findings": self.findings_page,
             "Investigation Graph": self.graph_page,
             "Activity": self.activity_page,
@@ -116,7 +120,7 @@ class MainWindow(QMainWindow):
         self.job_status = status
         status.setObjectName("jobStatus")
         self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (6, 8, 9)))
+        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (4, 5, 8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.case_opened.connect(self._open_case)
@@ -246,6 +250,7 @@ class MainWindow(QMainWindow):
         self.artifacts_page.open_case(workspace, case)
         self.findings_page.open_case(workspace, case)
         self.graph_page.open_case(workspace, case)
+        self.reports_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)
 
     def _page_changed(self, index: int) -> None:

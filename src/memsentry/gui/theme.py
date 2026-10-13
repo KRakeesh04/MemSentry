@@ -59,9 +59,6 @@ def workspace_stylesheet() -> str:
             padding: 10px 16px; border-radius: 6px; border: 1px solid {border};
             background: {surface}; color: {muted};
         }}
-        #workspace QWidget#investigationGraphContent QPushButton {{ padding: 4px 10px; }}
-        #workspace QWidget#investigationGraphContent QComboBox,
-        #workspace QWidget#investigationGraphContent QLineEdit {{ padding: 5px 8px; }}
         #workspace QTableWidget:focus {{ border: 1px solid {accent}; }}
         #workspace QLineEdit, #workspace QComboBox, #workspace QTextEdit {{
             background: {surface}; color: {text}; border: 1px solid {border};

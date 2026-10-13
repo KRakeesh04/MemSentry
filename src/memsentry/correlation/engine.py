@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
-from memsentry.correlation.relationships import ArtifactRelationship, observed_relationships
 from memsentry.correlation.rule_loader import (
     CorrelationRule,
     get_default_rules_path,
@@ -14,6 +14,17 @@ from memsentry.correlation.rule_loader import (
 )
 from memsentry.models.artifact import Artifact
 from memsentry.models.finding import FindingCreate, FindingSeverity
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactRelationship:
+    """A relationship between two artifacts."""
+
+    source_artifact_id: UUID
+    target_artifact_id: UUID
+    relationship_type: str
+    confidence: float
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -263,7 +274,48 @@ class CorrelationEngine:
         self, artifacts: list[Artifact], contexts: dict[int, ProcessContext]
     ) -> list[ArtifactRelationship]:
         """Detect relationships between artifacts."""
-        return observed_relationships(artifacts)
+        relationships: list[ArtifactRelationship] = []
+
+        # Parent-child relationships
+        for pid, context in contexts.items():
+            if context.ppid is not None and context.ppid in contexts:
+                parent_context = contexts[context.ppid]
+                # Use a valid UUID for the relationship
+                source_id = (
+                    parent_context.memory_regions[0].id
+                    if parent_context.memory_regions
+                    else UUID(int=context.ppid)
+                )
+                target_id = (
+                    context.memory_regions[0].id if context.memory_regions else UUID(int=pid)
+                )
+                relationships.append(
+                    ArtifactRelationship(
+                        source_artifact_id=source_id,
+                        target_artifact_id=target_id,
+                        relationship_type="parent_child",
+                        confidence=1.0,
+                        metadata={"parent_pid": context.ppid, "child_pid": pid},
+                    )
+                )
+
+        # Network ownership relationships
+        for pid, context in contexts.items():
+            for conn in context.network_connections:
+                target_id = (
+                    context.memory_regions[0].id if context.memory_regions else UUID(int=pid)
+                )
+                relationships.append(
+                    ArtifactRelationship(
+                        source_artifact_id=conn.id,
+                        target_artifact_id=target_id,
+                        relationship_type="network_ownership",
+                        confidence=0.9,
+                        metadata={"pid": pid},
+                    )
+                )
+
+        return relationships
 
     def _apply_rule(
         self, rule: CorrelationRule, contexts: dict[int, ProcessContext], analysis_run_id: UUID

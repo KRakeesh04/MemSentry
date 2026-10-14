@@ -362,23 +362,40 @@ def workspace_stylesheet() -> str:
         }}
 
         #workspace QMessageBox {{
-            background-color: #2B2B2E;
+            background-color: {"#2B2B2E" if dark else "#F8FAFC"};
         }}
 
         #workspace QMessageBox QLabel {{
             background-color: transparent;
-            color: #F1F5F9;
+            color: {"#F1F5F9" if dark else "#0F172A"};
             border: none;
         }}
 
         #workspace QMessageBox QLabel#qt_msgbox_label {{
             background-color: transparent;
-            color: #F1F5F9;
+            color: {"#F1F5F9" if dark else "#0F172A"};
             border: none;
         }}
 
         #workspace QMessageBox QPushButton {{
             min-width: 90px;
+            background-color: {"#182230" if dark else "#FFFFFF"};
+            color: {"#CBD5E1" if dark else "#334155"};
+            border: 1px solid {"#334155" if dark else "#CBD5E1"};
+            border-radius: 6px;
+            padding: 6px 12px;
+        }}
+
+        #workspace QMessageBox QPushButton:hover {{
+            background-color: {"#223043" if dark else "#F1F5F9"};
+            color: {"#FFFFFF" if dark else "#0F172A"};
+            border-color: {"#475569" if dark else "#94A3B8"};
+        }}
+
+        #workspace QMessageBox QPushButton:pressed {{
+            background-color: {"#0F172A" if dark else "#E2E8F0"};
+            color: {"#FFFFFF" if dark else "#0F172A"};
+            border-color: #3B82F6;
         }}
 
         #workspace QGraphicsView#investigationGraphCanvas {{

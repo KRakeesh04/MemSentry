@@ -40,6 +40,9 @@ classifiers = [
 [project.gui-scripts]
 memsentry = "memsentry.__main__:main"
 
+[project.optional-dependencies]
+telemetry = ["python-evtx>=0.8,<1.0"]
+
 
 [tool.setuptools]
 package-dir = { "" = "src" }

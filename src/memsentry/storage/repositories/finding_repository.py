@@ -27,7 +27,7 @@ class FindingRepository:
     def create(self, data: FindingCreate) -> Finding:
         """Create and return a new finding record."""
 
-        finding_id = uuid4()
+        finding_id = data.finding_id
         now = datetime.now(UTC)
 
         try:
@@ -123,7 +123,11 @@ class FindingRepository:
                         raise ValueError(
                             "Findings require source artifacts from the same analysis run"
                         )
-                    finding = Finding(**data.model_dump(), id=uuid4(), created_at=datetime.now(UTC))
+                    finding = Finding(
+                        **data.model_dump(exclude={"finding_id"}),
+                        id=data.finding_id,
+                        created_at=datetime.now(UTC),
+                    )
                     connection.execute(
                         """INSERT INTO findings
                         (id, analysis_run_id, rule_id, title, description, severity, confidence, created_at)
@@ -139,7 +143,7 @@ class FindingRepository:
                             finding.created_at.isoformat(),
                         ),
                     )
-                    for artifact in artifacts:
+                    for index, artifact in enumerate(artifacts):
                         connection.execute(
                             """INSERT INTO finding_evidence
                             (id, finding_id, plugin_run_id, artifact_type, source_reference,
@@ -156,9 +160,10 @@ class FindingRepository:
                                         "pid": artifact.pid,
                                         "original_data": artifact.original_data,
                                         "provenance": artifact.provenance,
+                                        **({"correlation_details": {**data.correlation_details, "finding_id": str(finding.id), "analysis_run_id": str(finding.analysis_run_id)}} if index == 0 else {}),
                                     }
                                 ),
-                                "Observed process context supplied to the correlation rule; "
+                                "Matched source evidence supplied to the correlation rule; "
                                 "the finding is an inferred triage result.",
                             ),
                         )

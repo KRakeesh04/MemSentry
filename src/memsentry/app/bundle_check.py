@@ -6,9 +6,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
-import yara
 from PySide6.QtWidgets import QApplication
 
+import yara
 from memsentry.correlation.rule_loader import get_default_rules_path, load_rules_from_yaml
 from memsentry.gui.branding import application_icon
 from memsentry.gui.pages.investigation_graph import create_page

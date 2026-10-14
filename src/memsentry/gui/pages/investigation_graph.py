@@ -1,688 +1,451 @@
-"""Run-scoped investigation workspace with a separate, saved manual layer."""
+"""Investigation Graph page for interactive forensic entity & relationship exploration."""
 
 from __future__ import annotations
 
-import json
-import math
-from collections.abc import Callable
-from uuid import UUID, uuid4
+import logging
 
-from PySide6.QtCore import QEvent, QLineF, QPointF, Qt
-from PySide6.QtGui import QPen, QPolygonF
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QDialog,
-    QDialogButtonBox,
-    QFormLayout,
+    QCheckBox,
     QFrame,
-    QGraphicsItem,
-    QGraphicsLineItem,
-    QGraphicsPolygonItem,
-    QGraphicsScene,
-    QGraphicsTextItem,
     QHBoxLayout,
     QLabel,
     QLineEdit,
-    QListWidget,
-    QListWidgetItem,
-    QMessageBox,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QSplitter,
-    QTableWidget,
-    QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from memsentry.app.case_service import workspace_database
-from memsentry.app.graph_revision_service import compose_graph, edge_key, save_revision
-from memsentry.app.graph_service import GraphEdge, InvestigationGraph, load_graph
+from memsentry.graph.builder import GraphBuilder
+from memsentry.graph.models import GraphData, GraphNode
 from memsentry.gui.controls import ThemedComboBox
-from memsentry.gui.graph_canvas import GraphView, NodeItem, graph_colors
+from memsentry.gui.pages.graph_canvas import GraphCanvas
 from memsentry.models.case import Case
-from memsentry.models.graph_revision import GraphDraft, HypothesisNode, ManualRelationship
-from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
-from memsentry.storage.repositories.evidence_repository import EvidenceRepository
-from memsentry.storage.repositories.graph_revision_repository import GraphRevisionRepository
+
+logger = logging.getLogger(__name__)
 
 
-class InvestigationGraphPage(QScrollArea):
+def _info_row(label: str, value: str) -> QWidget:
+    container = QWidget()
+    layout = QVBoxLayout(container)
+    layout.setContentsMargins(0, 4, 0, 4)
+    layout.setSpacing(2)
+    lbl = QLabel(label.upper())
+    lbl.setObjectName("muted")
+    lbl.setStyleSheet("font-size: 10px; font-weight: bold;")
+    val = QLabel(value)
+    val.setWordWrap(True)
+    val.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+    layout.addWidget(lbl)
+    layout.addWidget(val)
+    return container
+
+
+class EntityDetailsPanel(QScrollArea):
+    """Right-side inspector showing metadata and relationships of the selected node."""
+
+    navigate_findings_requested = Signal()
+
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
-        self.case: Case | None = None
+        self.setObjectName("entityDetailsPanel")
+
+        self.container = QWidget()
+        self.details_layout = QVBoxLayout(self.container)
+        self.details_layout.setContentsMargins(16, 16, 16, 16)
+        self.details_layout.setSpacing(12)
+        self.setWidget(self.container)
+
+        self.show_empty()
+
+    def show_empty(self) -> None:
+        self._clear()
+        title = QLabel("Selected Entity")
+        title.setObjectName("sectionTitle")
+        self.details_layout.addWidget(title)
+
+        hint = QLabel("Click any node on the graph canvas to inspect its forensic properties and relationships.")
+        hint.setObjectName("muted")
+        hint.setWordWrap(True)
+        self.details_layout.addWidget(hint)
+        self.details_layout.addStretch()
+
+    def display_node(self, node: GraphNode, graph_data: GraphData) -> None:
+        self._clear()
+
+        # Header
+        type_badge = QLabel(f"ENTITY TYPE: {node.node_type.upper()}")
+        type_badge.setObjectName("muted")
+        type_badge.setStyleSheet("font-size: 11px; font-weight: bold;")
+        self.details_layout.addWidget(type_badge)
+
+        name_lbl = QLabel(node.label)
+        name_lbl.setObjectName("sectionTitle")
+        name_lbl.setWordWrap(True)
+        self.details_layout.addWidget(name_lbl)
+
+        # Related connected nodes
+        incoming = [e for e in graph_data.edges if e.target_id == node.id]
+        outgoing = [e for e in graph_data.edges if e.source_id == node.id]
+
+        if node.node_type == "process":
+            pid = node.metadata.get("pid")
+            ppid = node.metadata.get("ppid")
+            self.details_layout.addWidget(_info_row("Process Name", str(node.metadata.get("process_name", node.label))))
+            self.details_layout.addWidget(_info_row("PID", str(pid) if pid is not None else "N/A"))
+            self.details_layout.addWidget(_info_row("Parent PID (PPID)", str(ppid) if ppid is not None else "N/A"))
+            if node.metadata.get("evidence_name"):
+                self.details_layout.addWidget(_info_row("Evidence Source", str(node.metadata["evidence_name"])))
+            if node.metadata.get("created_at"):
+                self.details_layout.addWidget(_info_row("Created At", str(node.metadata["created_at"])))
+            if node.metadata.get("cmdline"):
+                self.details_layout.addWidget(_info_row("Command Line", str(node.metadata["cmdline"])))
+
+            # Connected endpoints & findings
+            endpoints = [
+                graph_data.nodes[e.target_id].label
+                for e in outgoing
+                if e.target_id in graph_data.nodes and graph_data.nodes[e.target_id].node_type == "network"
+            ]
+            if endpoints:
+                self.details_layout.addWidget(_info_row("Network Endpoints", ", ".join(endpoints)))
+
+            findings = [
+                graph_data.nodes[e.source_id].label
+                for e in incoming
+                if e.source_id in graph_data.nodes and graph_data.nodes[e.source_id].node_type == "finding"
+            ]
+            if findings:
+                self.details_layout.addWidget(_info_row("Related Findings", "; ".join(findings)))
+
+        elif node.node_type == "network":
+            meta = node.metadata
+            endpoint = f"{meta.get('remote_address') or meta.get('local_address')}:{meta.get('remote_port') or meta.get('local_port')}"
+            self.details_layout.addWidget(_info_row("Endpoint", endpoint))
+            self.details_layout.addWidget(_info_row("Protocol", str(meta.get("protocol", "TCP"))))
+            if meta.get("state"):
+                self.details_layout.addWidget(_info_row("Connection State", str(meta["state"])))
+            if meta.get("local_address"):
+                self.details_layout.addWidget(_info_row("Local Address", f"{meta.get('local_address')}:{meta.get('local_port')}"))
+            if meta.get("remote_address"):
+                self.details_layout.addWidget(_info_row("Remote Address", f"{meta.get('remote_address')}:{meta.get('remote_port')}"))
+
+            # Parent processes
+            processes = [
+                graph_data.nodes[e.source_id].label
+                for e in incoming
+                if e.source_id in graph_data.nodes and graph_data.nodes[e.source_id].node_type == "process"
+            ]
+            if processes:
+                self.details_layout.addWidget(_info_row("Owner Process", ", ".join(processes)))
+
+        elif node.node_type == "finding":
+            meta = node.metadata
+            self.details_layout.addWidget(_info_row("Finding Title", str(meta.get("title", node.label))))
+            self.details_layout.addWidget(_info_row("Severity", str(meta.get("severity", "N/A")).upper()))
+            self.details_layout.addWidget(_info_row("Rule ID", str(meta.get("rule_id", "N/A"))))
+            conf = meta.get("confidence")
+            self.details_layout.addWidget(_info_row("Confidence", f"{conf:.0%}" if isinstance(conf, float) else "Not recorded"))
+            if meta.get("description"):
+                self.details_layout.addWidget(_info_row("Description", str(meta["description"])))
+
+            # Related processes
+            flagged = [
+                graph_data.nodes[e.target_id].label
+                for e in outgoing
+                if e.target_id in graph_data.nodes and graph_data.nodes[e.target_id].node_type == "process"
+            ]
+            if flagged:
+                self.details_layout.addWidget(_info_row("Target Process", ", ".join(flagged)))
+
+            view_btn = QPushButton("View in Findings Page")
+            view_btn.clicked.connect(self.navigate_findings_requested.emit)
+            self.details_layout.addWidget(view_btn)
+
+        elif node.node_type == "evidence":
+            meta = node.metadata
+            self.details_layout.addWidget(_info_row("Evidence Name", str(meta.get("filename", node.label))))
+            self.details_layout.addWidget(_info_row("Operating System", str(meta.get("operating_system", "N/A")).upper()))
+            size = meta.get("size_bytes")
+            size_mb = f"{size / (1024 * 1024):.2f} MB" if isinstance(size, (int, float)) else "N/A"
+            self.details_layout.addWidget(_info_row("File Size", size_mb))
+            self.details_layout.addWidget(_info_row("SHA-256 Hash", str(meta.get("sha256", "N/A"))))
+            self.details_layout.addWidget(_info_row("Verification Status", str(meta.get("status", "verified")).capitalize()))
+
+        self.details_layout.addStretch()
+
+    def _clear(self) -> None:
+        while self.details_layout.count():
+            item = self.details_layout.takeAt(0)
+            if item is not None:
+                widget = item.widget()
+                if widget is not None:
+                    widget.deleteLater()
+
+
+class InvestigationGraphPage(QWidget):
+    """Main Investigation Graph page component."""
+
+    findings_page_requested = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
         self.workspace_path = ""
-        self.graph = InvestigationGraph()
-        self.baseline = InvestigationGraph()
-        self.draft = GraphDraft()
-        self._saved = self.draft.model_copy(deep=True)
-        self._history = [self.draft.model_copy(deep=True)]
-        self._history_index = 0
-        self._rendering = False
-        self._moving = False
-        self._run_id: str | None = None
-        self._revision_id: str | None = None
-        self.visible: set[str] = set()
-        self.node_items: dict[str, NodeItem] = {}
-        self.edge_items: list[tuple[GraphEdge, QGraphicsLineItem, QGraphicsPolygonItem,
-                                    QGraphicsTextItem]] = []
-        self.view: GraphView
-        content = QWidget()
-        content.setObjectName("investigationGraphContent")
-        layout = QVBoxLayout(content)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(8)
-        heading = QHBoxLayout()
-        title = QLabel("Investigation Graph")
-        title.setObjectName("pageTitle")
-        heading.addWidget(title)
-        heading.addStretch()
-        self.save_button = QPushButton("Save revision")
-        self.save_button.setEnabled(False)
-        self.save_button.setObjectName("primaryAction")
-        self.save_button.clicked.connect(self.save_dialog)
-        heading.addWidget(self.save_button)
-        layout.addLayout(heading)
-        subtitle = QLabel("Explore suspicious findings, connect artifacts, and record hypotheses.")
-        subtitle.setObjectName("muted")
-        subtitle.setWordWrap(True)
-        layout.addWidget(subtitle)
-        self.run_choice = ThemedComboBox()
-        self.run_choice.setAccessibleName("Evidence and analysis run")
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(self.run_choice, 1)
-        refresh = QPushButton("Refresh runs")
-        refresh.clicked.connect(self.refresh)
-        toolbar.addWidget(refresh)
-        layout.addLayout(toolbar)
-        revisions = QHBoxLayout()
-        revisions.addWidget(QLabel("Graph version"))
-        self.revision_choice = ThemedComboBox()
-        self.revision_choice.setAccessibleName("Original graph or saved investigator revision")
-        self.revision_choice.currentIndexChanged.connect(self.load_revision)
-        revisions.addWidget(self.revision_choice, 1)
-        self.changes = QLabel("Original baseline")
-        self.changes.setObjectName("muted")
-        self.changes.setWordWrap(True)
-        revisions.addWidget(self.changes, 1)
-        layout.addLayout(revisions)
-        legend = QLabel("Solid → observed   ·   Dashed → automated inference   ·   Dotted → manual")
-        legend.setToolTip("Links show associations, not a proven action chain. "
-                          "Hypotheses are investigator notes.")
-        legend.setWordWrap(True)
-        legend.setObjectName("muted")
-        layout.addWidget(legend)
-        editing = QHBoxLayout()
-        for text, callback in (("Add hypothesis", self.add_hypothesis_dialog),
-                               ("Connect nodes", self.connect_dialog),
-                               ("Add note", self.note_dialog),
-                               ("Hide selected", self.hide_selected),
-                               ("Undo", self.undo), ("Redo", self.redo)):
-            button = QPushButton(text)
-            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-            button.clicked.connect(callback)
-            editing.addWidget(button)
-        editing.addStretch()
-        layout.addLayout(editing)
+        self.case: Case | None = None
+        self.raw_graph_data = GraphData()
+
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(24, 20, 24, 20)
+        main_layout.setSpacing(14)
+
+        # ---------------- TOP TOOLBAR ----------------
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(12)
+
+        self.title_lbl = QLabel("Investigation Graph")
+        self.title_lbl.setObjectName("pageTitle")
+        top_bar.addWidget(self.title_lbl)
+
+        self.case_badge = QLabel("No case selected")
+        self.case_badge.setObjectName("muted")
+        top_bar.addWidget(self.case_badge)
+
+        top_bar.addStretch()
+
+        # Search field
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("Search PID, process, IP, rule...")
+        self.search_input.setFixedWidth(220)
+        self.search_input.textChanged.connect(self._apply_filters)
+        top_bar.addWidget(self.search_input)
+
+        # Entity type combo
+        self.type_combo = ThemedComboBox()
+        self.type_combo.addItems(["All Entity Types", "Processes", "Network", "Findings", "Evidence"])
+        self.type_combo.currentIndexChanged.connect(self._apply_filters)
+        top_bar.addWidget(self.type_combo)
+
+        # Checkbox: Related to findings only
+        self.findings_only_check = QCheckBox("Findings & connected only")
+        self.findings_only_check.setChecked(True)
+        self.findings_only_check.stateChanged.connect(self._apply_filters)
+        top_bar.addWidget(self.findings_only_check)
+
+        # Reset view button
+        self.reset_btn = QPushButton("Reset View")
+        self.reset_btn.clicked.connect(self._reset_view)
+        top_bar.addWidget(self.reset_btn)
+
+        self.refresh_btn = QPushButton("Refresh")
+        self.refresh_btn.clicked.connect(self.refresh)
+        top_bar.addWidget(self.refresh_btn)
+
+        main_layout.addLayout(top_bar)
+
+        # ---------------- CENTER AREA (SPLITTER) ----------------
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(1)
+
+        # Graph area
+        graph_container = QWidget(splitter)
+        graph_layout = QVBoxLayout(graph_container)
+        graph_layout.setContentsMargins(0, 0, 0, 0)
+        graph_layout.setSpacing(6)
+
+        self.canvas = GraphCanvas(graph_container)
+        self.canvas.node_selected.connect(self._on_node_selected)
+
+        graph_layout.addWidget(self.canvas, 1)
+
+        # Control Row
         controls = QHBoxLayout()
-        for text, callback in (("Expand selected", self.expand_selected),
-                               ("Fit view", self.fit_view), ("Fit selection", self.fit_selection),
-                               ("Zoom +", lambda: self.view.zoom(1.2)),
-                               ("Zoom -", lambda: self.view.zoom(1 / 1.2))):
-            button = QPushButton(text)
-            button.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
-            button.clicked.connect(callback)
-            controls.addWidget(button)
-        layout.addLayout(controls)
-        splitter = QSplitter()
-        picker = QWidget()
-        picker_layout = QVBoxLayout(picker)
-        picker_layout.setContentsMargins(0, 0, 8, 0)
-        picker_heading = QLabel("Artifacts & hypotheses")
-        picker_heading.setObjectName("sectionTitle")
-        picker_layout.addWidget(picker_heading)
-        self.search = QLineEdit()
-        self.search.setPlaceholderText("Search captured artifacts and findings")
-        self.search.setAccessibleName("Search graph nodes")
-        picker_layout.addWidget(self.search)
-        self.node_list = QListWidget()
-        self.node_list.setAccessibleName("Graph focus: activate a result to show its neighborhood")
-        picker_layout.addWidget(self.node_list)
-        focus = QPushButton("Focus selected result")
-        focus.clicked.connect(self.focus_result)
-        picker_layout.addWidget(focus)
-        add = QPushButton("Add selected result")
-        add.clicked.connect(self.add_result)
-        picker_layout.addWidget(add)
-        splitter.addWidget(picker)
-        self.scene = QGraphicsScene(self)
-        self.view = GraphView(self.scene)
-        splitter.addWidget(self.view)
-        self.inspector = QTextEdit()
-        self.inspector.setReadOnly(True)
-        self.inspector.setAccessibleName("Artifact and relationship provenance")
-        details = QWidget()
-        details_layout = QVBoxLayout(details)
-        details_layout.setContentsMargins(8, 0, 0, 0)
-        details_heading = QLabel("Details & provenance")
-        details_heading.setObjectName("sectionTitle")
-        details_layout.addWidget(details_heading)
-        details_layout.addWidget(self.inspector)
-        splitter.addWidget(details)
-        splitter.setSizes([220, 820, 260])
-        splitter.setStretchFactor(1, 1)
+        controls.setSpacing(6)
+
+        zoom_in = QPushButton("+")
+        zoom_in.setObjectName("graphControlButton")
+        zoom_in.setToolTip("Zoom in")
+        zoom_in.clicked.connect(self.canvas.zoom_in)
+
+        zoom_out = QPushButton("-")
+        zoom_out.setObjectName("graphControlButton")
+        zoom_out.setToolTip("Zoom out")
+        zoom_out.clicked.connect(self.canvas.zoom_out)
+
+        fit = QPushButton("Fit")
+        fit.setObjectName("graphFitButton")
+        fit.setToolTip("Fit graph to view")
+        fit.clicked.connect(self.canvas.reset_view)
+
+        pan_left = QPushButton("←")
+        pan_left.setObjectName("graphControlButton")
+        pan_left.setToolTip("Pan left")
+        pan_left.clicked.connect(self.canvas.pan_left)
+
+        pan_up = QPushButton("↑")
+        pan_up.setObjectName("graphControlButton")
+        pan_up.setToolTip("Pan up")
+        pan_up.clicked.connect(self.canvas.pan_up)
+
+        pan_down = QPushButton("↓")
+        pan_down.setObjectName("graphControlButton")
+        pan_down.setToolTip("Pan down")
+        pan_down.clicked.connect(self.canvas.pan_down)
+
+        pan_right = QPushButton("→")
+        pan_right.setObjectName("graphControlButton")
+        pan_right.setToolTip("Pan right")
+        pan_right.clicked.connect(self.canvas.pan_right)
+
+        controls.setSpacing(5)
+
+        controls.addWidget(zoom_in)
+        controls.addWidget(zoom_out)
+        controls.addWidget(fit)
+
+        controls.addSpacing(12)
+
+        controls.addWidget(pan_left)
+        controls.addWidget(pan_up)
+        controls.addWidget(pan_down)
+        controls.addWidget(pan_right)
+
         controls.addStretch()
-        for text, panel, shown in (("Node picker", picker, True), ("Details", details, False)):
-            toggle = QPushButton(text)
-            toggle.setCheckable(True)
-            toggle.setChecked(shown)
-            panel.setVisible(shown)
-            toggle.toggled.connect(panel.setVisible)
-            controls.addWidget(toggle)
-        layout.addWidget(splitter, 1)
-        self.relationships = QTableWidget(0, 4)
-        self.relationships.setHorizontalHeaderLabels(["Source →", "Relationship", "Target", "Kind"])
-        self.relationships.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.relationships.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self.relationships.setShowGrid(False)
-        self.relationships.verticalHeader().hide()
-        self.relationships.setAccessibleName("Relationships in the visible graph")
-        self.relationships.horizontalHeader().setStretchLastSection(True)
-        self.relationships.setMaximumHeight(120)
-        self.relationships.setColumnWidth(0, 220)
-        self.relationships.setColumnWidth(1, 180)
-        self.relationships.setColumnWidth(2, 220)
-        self.relationships.hide()
-        relationships_toggle = QPushButton("Relationships")
-        relationships_toggle.setCheckable(True)
-        relationships_toggle.toggled.connect(self.relationships.setVisible)
-        controls.addWidget(relationships_toggle)
-        layout.addWidget(self.relationships)
-        self.status = QLabel("Open a case to explore recorded relationships.")
-        self.status.setWordWrap(True)
-        layout.addWidget(self.status)
-        self.run_choice.currentIndexChanged.connect(self.load_run)
-        self.search.textChanged.connect(self.filter_nodes)
-        self.node_list.itemActivated.connect(lambda _: self.focus_result())
-        self.scene.selectionChanged.connect(self.inspect_selection)
-        self.relationships.currentCellChanged.connect(self.inspect_relationship)
-        self._visible_edges: list[GraphEdge] = []
-        self.setWidget(content)
 
-    def open_case(self, workspace: str, case: Case) -> bool:
-        if self.workspace_path == workspace and self.case == case:
-            return True
-        if not self.confirm_discard():
-            return False
-        self._run_id = None
-        self.workspace_path, self.case = workspace, case
-        self.refresh(force=True)
-        return True
+        graph_layout.addLayout(controls)
+        splitter.addWidget(graph_container)
 
-    def refresh(self, force: bool = False) -> None:
-        previous = self.run_choice.currentData()
-        self.run_choice.blockSignals(True)
-        self.run_choice.clear()
+        # ---------------- DETAILS PANEL ----------------
+        self.details_panel = EntityDetailsPanel(splitter)
+        self.details_panel.navigate_findings_requested.connect(self.findings_page_requested.emit)
+        self.details_panel.setMinimumWidth(260)
+        self.details_panel.setMaximumWidth(360)
+        splitter.addWidget(self.details_panel)
+
+        # ---------------- BOTTOM LEGEND & METRICS ----------------
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setSpacing(16)
+
+        splitter.setSizes([700, 300])
+        main_layout.addWidget(splitter, 1)
+
+        # ---------------- BOTTOM LEGEND & METRICS ----------------
+        bottom_bar = QHBoxLayout()
+        bottom_bar.setSpacing(16)
+
+        legend_title = QLabel("Legend:")
+        legend_title.setObjectName("muted")
+        bottom_bar.addWidget(legend_title)
+
+        def make_legend_item(text: str, color: str, symbol: str) -> QLabel:
+            lbl = QLabel(f"{symbol} {text}")
+            lbl.setStyleSheet(f"color: {color}; font-weight: bold; font-size: 11px;")
+            return lbl
+
+        bottom_bar.addWidget(make_legend_item("Evidence", "#3B82F6", "⯁"))
+        bottom_bar.addWidget(make_legend_item("Process", "#10B981", "■"))
+        bottom_bar.addWidget(make_legend_item("Network", "#8B5CF6", "◆"))
+        bottom_bar.addWidget(make_legend_item("Finding", "#EF4444", "⬢"))
+
+        bottom_bar.addStretch()
+
+        self.status_metrics = QLabel("No case selected")
+        self.status_metrics.setObjectName("muted")
+        bottom_bar.addWidget(self.status_metrics)
+
+        main_layout.addLayout(bottom_bar)
+
+    def open_case(self, workspace: str, case: Case) -> None:
+        """Set active case and load graph data."""
+        self.workspace_path = workspace
+        self.case = case
+        self.case_badge.setText(f"·  {case.case_number} ({case.name})")
+        self.refresh()
+
+    def refresh(self) -> None:
+        """Reload graph data for active case."""
+        if not self.case or not self.workspace_path:
+            self.raw_graph_data = GraphData()
+            self.canvas.set_graph_data(self.raw_graph_data)
+            self.details_panel.show_empty()
+            self.status_metrics.setText("No case selected")
+            return
+
         try:
-            if self.case:
-                database = workspace_database(self.workspace_path)
-                for evidence in EvidenceRepository(database).list_by_case(self.case.id):
-                    for run in reversed(AnalysisRunRepository(database).list_by_evidence(evidence.id)):
-                        self.run_choice.addItem(
-                            f"{evidence.file_path.name} · {run.id} · {run.status}", str(run.id))
-                index = self.run_choice.findData(previous)
-                if index >= 0:
-                    self.run_choice.setCurrentIndex(index)
+            self.raw_graph_data = GraphBuilder.build_for_case(self.workspace_path, self.case)
+            self._apply_filters()
         except Exception as exc:
-            self.status.setText(f"Could not load analysis runs: {exc}")
-            return
-        finally:
-            self.run_choice.blockSignals(False)
-        if (force or self.run_choice.currentData() != self._run_id
-                or (not self.dirty and self._revision_id is None)):
-            self.load_run(force=True)
+            logger.exception("Failed to build graph for case %s", self.case.id)
+            self.status_metrics.setText(f"Error loading graph: {exc}")
 
-    def load_run(self, *_args: int, force: bool = False) -> None:
-        run_id = self.run_choice.currentData()
-        if run_id == self._run_id and not force:
-            return
-        if self._run_id and not self.confirm_discard():
-            self._set_combo(self.run_choice, self._run_id)
-            return
-        self._run_id = run_id
-        self._revision_id = None
-        self.graph = InvestigationGraph()
-        self.visible = set()
-        self.inspector.clear()
-        self.search.clear()
-        try:
-            if run_id := self.run_choice.currentData():
-                self.graph = load_graph(workspace_database(self.workspace_path), UUID(run_id))
-        except Exception as exc:
-            self.graph.warnings.append(f"Could not load graph: {exc}")
-        self.baseline = self.graph
-        self.draft = GraphDraft()
-        self.node_items = {}
-        self.edge_items = []
-        self.filter_nodes()
-        seeds = sorted(self.graph.nodes, key=lambda key: (
-            self.graph.nodes[key].kind != "finding",
-            self.graph.nodes[key].kind != "process", key))
-        if seeds:
-            self.visible = self.graph.neighborhood({seeds[0]})
-        self.render_graph()
-        self.reset_history()
-        self.refresh_revisions()
+    def _reset_view(self) -> None:
+        self.canvas.reset_view()
 
-    def filter_nodes(self) -> None:
-        self.node_list.clear()
-        query = self.search.text().casefold()
-        for node in sorted(self.graph.nodes.values(), key=lambda n: (n.kind, n.label, n.id)):
-            if query in f"{node.kind} {node.label} {node.id}".casefold():
-                item = QListWidgetItem(f"{node.kind.replace('_', ' ')} · {node.label}")
-                item.setData(Qt.ItemDataRole.UserRole, node.id)
-                self.node_list.addItem(item)
+    def _apply_filters(self) -> None:
+        """Filter node visibility based on query text, entity type combo, and findings checkbox."""
+        query = self.search_input.text().strip().lower()
+        type_idx = self.type_combo.currentIndex()
+        findings_only = self.findings_only_check.isChecked()
 
-    def focus_result(self) -> None:
-        if item := self.node_list.currentItem():
-            key = item.data(Qt.ItemDataRole.UserRole)
-            self.visible = self.graph.neighborhood({key})
-            self.render_graph()
-            self.capture_edit()
-            self.node_items[key].setSelected(True)
+        # Type map
+        # 0: All, 1: Process, 2: Network, 3: Finding, 4: Evidence
+        type_filter = {
+            1: "process",
+            2: "network",
+            3: "finding",
+            4: "evidence",
+        }.get(type_idx)
 
-    def add_result(self) -> None:
-        if item := self.node_list.currentItem():
-            self.visible.add(item.data(Qt.ItemDataRole.UserRole))
-            self.render_graph()
-            self.capture_edit()
+        # Finding-connected nodes set if requested
+        finding_connected_ids: set[str] = set()
+        if findings_only:
+            finding_nodes = [nid for nid, n in self.raw_graph_data.nodes.items() if n.node_type == "finding"]
+            for fnid in finding_nodes:
+                finding_connected_ids.add(fnid)
+                for edge in self.raw_graph_data.edges:
+                    if edge.source_id == fnid:
+                        finding_connected_ids.add(edge.target_id)
+                    elif edge.target_id == fnid:
+                        finding_connected_ids.add(edge.source_id)
 
-    def expand_selected(self) -> None:
-        seeds = {item.data(0) for item in self.scene.selectedItems() if item.data(0)}
-        if seeds:
-            self.visible |= self.graph.neighborhood(seeds, existing=self.visible)
-            self.render_graph()
-            self.capture_edit()
+        matching_node_ids: set[str] = set()
+        for nid, node in self.raw_graph_data.nodes.items():
+            if type_filter and node.node_type != type_filter:
+                continue
 
-    def render_graph(self) -> None:
-        self._rendering = True
-        positions = {key: QPointF(*pos) for key, pos in self.draft.positions.items()}
-        positions.update({key: item.pos() for key, item in self.node_items.items()})
-        self.edge_items = []
-        self.node_items = {}
-        self.scene.clear()
-        self._visible_edges = [e for e in self.graph.edges
-                               if e.source in self.visible and e.target in self.visible
-                               and edge_key(e) not in self.draft.hidden_edges]
-        # Lay out a directed neighborhood in columns; cycles share the last column.
-        levels: dict[str, int] = {}
-        remaining = set(self.visible)
-        for level in range(len(remaining)):
-            roots = {key for key in remaining if not any(
-                e.target == key and e.source in remaining for e in self._visible_edges)}
-            if not roots:
-                roots = remaining.copy()
-            levels.update(dict.fromkeys(roots, level))
-            remaining -= roots
-            if not remaining:
-                break
-        rows: dict[int, int] = {}
-        for key in sorted(self.visible):
-            node = self.graph.nodes[key]
-            item = NodeItem(key, self)
-            self.scene.addItem(item)
-            item.setToolTip(node.label)
-            item.setZValue(1)
-            level = levels.get(key, 0)
-            row = rows.get(level, 0)
-            rows[level] = row + 1
-            item.setPos(positions.get(key, QPointF(level * 360, row * 160)))
-            self.node_items[key] = item
-        self.relationships.setRowCount(len(self._visible_edges))
-        for row, edge in enumerate(self._visible_edges):
-            color = graph_colors(self.palette())["muted"]
-            pen = QPen(color, 2, {"inferred": Qt.PenStyle.DashLine,
-                                  "manual": Qt.PenStyle.DotLine}.get(
-                                      edge.kind, Qt.PenStyle.SolidLine))
-            line = self.scene.addLine(QLineF(), pen)
-            line.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable)
-            line.setData(1, row)
-            line.setToolTip(f"{edge.kind}: {edge.label}")
-            arrow = self.scene.addPolygon(QPolygonF(), pen, color)
-            label = self.scene.addText(f"Manual: {edge.label}" if edge.kind == "manual" else edge.label)
-            label.setDefaultTextColor(color)
-            label.setAcceptedMouseButtons(Qt.MouseButton.NoButton)
-            self.edge_items.append((edge, line, arrow, label))
-            for col, value in enumerate((self.graph.nodes[edge.source].label, edge.label,
-                                         self.graph.nodes[edge.target].label, edge.kind)):
-                self.relationships.setItem(row, col, QTableWidgetItem(value))
-        self.update_edges()
-        self.status.setText(
-            f"{len(self.visible)} / {len(self.graph.nodes)} nodes · "
-            f"{len(self._visible_edges)} visible relationships. Expand adds up to 40 neighbors. "
-            "Unresolved ownership is left unlinked. " + " ".join(self.graph.warnings[:5])
-            if self.graph.nodes else "No captured artifacts or findings for this run. "
-            + " ".join(self.graph.warnings)
+            if findings_only and nid not in finding_connected_ids:
+                continue
+
+            if query:
+                # Check label, subtitle, or metadata
+                meta_str = " ".join(str(v) for v in node.metadata.values()).lower()
+                if (
+                    query not in node.label.lower()
+                    and query not in node.subtitle.lower()
+                    and query not in meta_str
+                ):
+                    continue
+
+            matching_node_ids.add(nid)
+
+        # Count active edges between matching nodes
+        active_edges_count = sum(
+            1
+            for e in self.raw_graph_data.edges
+            if e.source_id in matching_node_ids and e.target_id in matching_node_ids
         )
-        self.fit_view()
-        self._rendering = False
 
-    def update_edges(self) -> None:
-        for edge, line, arrow, label in self.edge_items:
-            start = self.node_items[edge.source].sceneBoundingRect().center()
-            end = self.node_items[edge.target].sceneBoundingRect().center()
-            delta = end - start
-            # End arrows at the target rectangle boundary rather than behind the node.
-            scale = min(120 / abs(delta.x()) if delta.x() else float("inf"),
-                        48 / abs(delta.y()) if delta.y() else float("inf"))
-            tip = end - delta * min(scale, 0.5)
-            line.setLine(QLineF(start, tip))
-            angle = math.atan2(delta.y(), delta.x())
-            arrow.setPolygon(QPolygonF([tip, tip - QPointF(math.cos(angle - .45) * 12,
-                                                         math.sin(angle - .45) * 12),
-                                       tip - QPointF(math.cos(angle + .45) * 12,
-                                                     math.sin(angle + .45) * 12)]))
-            label.setPos((start + end) / 2 - QPointF(label.boundingRect().width() / 2, 25))
+        self.canvas.set_graph_data(self.raw_graph_data, matching_node_ids)
+        self.status_metrics.setText(
+            f"{len(matching_node_ids)} Entities · {active_edges_count} Relationships"
+        )
 
-    def inspect_selection(self) -> None:
-        selected = self.scene.selectedItems()
-        if selected and (key := selected[0].data(0)) in self.graph.nodes:
-            node = self.graph.nodes[key]
-            self.inspector.setPlainText(
-                f"{node.label}\n{node.kind.replace('_', ' ').upper()}\n\n"
-                f"Investigator note: {self.draft.notes.get(key, 'None')}\n\n"
-                + json.dumps(node.details, indent=2))
-        elif selected and selected[0].data(1) is not None:
-            self.inspect_relationship(selected[0].data(1))
-
-    def inspect_relationship(self, row: int, *_args: int) -> None:
-        if 0 <= row < len(self._visible_edges):
-            edge = self._visible_edges[row]
-            self.inspector.setPlainText(
-                f"{edge.kind.upper()} · {edge.label}\n{edge.source} → {edge.target}\n\n"
-                + json.dumps(edge.details, indent=2))
-
-    def fit_view(self) -> None:
-        if self.node_items:
-            self.view.fitInView(self.scene.itemsBoundingRect().adjusted(-40, -40, 40, 40),
-                                Qt.AspectRatioMode.KeepAspectRatio)
-
-    def fit_selection(self) -> None:
-        selected = self.scene.selectedItems()
-        if selected:
-            bounds = selected[0].sceneBoundingRect()
-            for item in selected[1:]:
-                bounds = bounds.united(item.sceneBoundingRect())
-            self.view.fitInView(bounds.adjusted(-80, -80, 80, 80),
-                                Qt.AspectRatioMode.KeepAspectRatio)
-
-    @staticmethod
-    def _set_combo(combo: ThemedComboBox, value: str | None) -> None:
-        combo.blockSignals(True)
-        combo.setCurrentIndex(combo.findData(value))
-        combo.blockSignals(False)
-
-    def snapshot(self) -> GraphDraft:
-        self.draft.visible = set(self.visible)
-        self.draft.positions.update({key: (item.pos().x(), item.pos().y())
-                                     for key, item in self.node_items.items()})
-        return self.draft.model_copy(deep=True)
-
-    @property
-    def dirty(self) -> bool:
-        return self.snapshot() != self._saved
-
-    def reset_history(self) -> None:
-        self._saved = self.snapshot()
-        self._history = [self._saved.model_copy(deep=True)]
-        self._history_index = 0
-        self.update_changes()
-
-    def capture_edit(self) -> None:
-        if self._rendering or self._moving:
-            return
-        current = self.snapshot()
-        if current != self._history[self._history_index]:
-            self._history = self._history[:self._history_index + 1]
-            self._history.append(current)
-            self._history_index += 1
-        self.update_changes()
-
-    def update_changes(self) -> None:
-        self.changes.setText(
-            f"{'Unsaved changes' if self.dirty else 'Saved revision' if self._revision_id else 'Original baseline'}"
-            f" · {len(self.draft.nodes)} hypotheses · {len(self.draft.edges)} manual links"
-            f" · {len(self.draft.notes)} notes · {len(self.draft.hidden_edges)} hidden links")
-        self.save_button.setEnabled(bool(self._run_id))
-
-    def apply_draft(self, draft: GraphDraft) -> None:
-        graph = compose_graph(self.baseline, draft)
-        self.draft = draft.model_copy(deep=True)
-        self.graph = graph
-        self.visible = set(draft.visible)
-        self.node_items = {}
-        self.edge_items = []
-        self.render_graph()
-        self.filter_nodes()
-        self.update_changes()
-
-    def undo(self) -> None:
-        if self._history_index:
-            self._history_index -= 1
-            self.apply_draft(self._history[self._history_index])
-
-    def redo(self) -> None:
-        if self._history_index + 1 < len(self._history):
-            self._history_index += 1
-            self.apply_draft(self._history[self._history_index])
-
-    def commit_draft(self, draft: GraphDraft) -> None:
-        self.apply_draft(draft)
-        self.capture_edit()
-
-    def add_hypothesis(self, label: str, category: str, rationale: str) -> str:
-        draft = self.snapshot()
-        key = f"hypothesis:{uuid4()}"
-        draft.nodes[key] = HypothesisNode(label=label.strip(), category=category.strip(),
-                                          notes=rationale.strip())
-        draft.visible.add(key)
-        # New hypotheses get free space below the existing view.
-        draft.positions[key] = (0, max((p[1] for p in draft.positions.values()), default=-160) + 160)
-        self.commit_draft(draft)
-        return key
-
-    def connect_nodes(self, source: str, target: str, label: str, rationale: str) -> None:
-        draft = self.snapshot()
-        draft.edges.append(ManualRelationship(source=source, target=target,
-                                               label=label.strip(), rationale=rationale.strip()))
-        draft.visible.update((source, target))
-        self.commit_draft(draft)
-
-    def hide_selected(self) -> None:
-        draft = self.snapshot()
-        for item in self.scene.selectedItems():
-            if key := item.data(0):
-                draft.visible.discard(key)
-            elif item.data(1) is not None:
-                draft.hidden_edges.add(edge_key(self._visible_edges[item.data(1)]))
-        if not self.scene.selectedItems() and self.relationships.currentRow() >= 0:
-            draft.hidden_edges.add(edge_key(self._visible_edges[self.relationships.currentRow()]))
-        self.commit_draft(draft)
-
-    def form_dialog(self, title: str, fields: list[tuple[str, QWidget]],
-                    action: Callable[[], object]) -> bool:
-        dialog = QDialog(self)
-        dialog.setWindowTitle(title)
-        dialog.setObjectName("analysisDialog")
-        dialog.setMinimumWidth(460)
-        form = QFormLayout(dialog)
-        for label, widget in fields:
-            widget.setAccessibleName(label)
-            form.addRow(label, widget)
-        error = QLabel()
-        error.setWordWrap(True)
-        form.addRow(error)
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok
-                                   | QDialogButtonBox.StandardButton.Cancel)
-        buttons.rejected.connect(dialog.reject)
-
-        def accept() -> None:
-            try:
-                action()
-            except Exception as exc:
-                error.setText(str(exc))
-                return
-            dialog.accept()
-
-        buttons.accepted.connect(accept)
-        form.addRow(buttons)
-        return dialog.exec() == QDialog.DialogCode.Accepted
-
-    def add_hypothesis_dialog(self) -> None:
-        if not self._run_id:
-            self.status.setText("Select an analysis run before adding a hypothesis.")
-            return
-        name = QLineEdit()
-        category = ThemedComboBox()
-        category.addItems(["Process", "Network", "File", "User", "Other"])
-        rationale = QTextEdit()
-        rationale.setPlaceholderText("Why is this entity relevant? This is a manual hypothesis.")
-        self.form_dialog("Add investigator hypothesis", [("Label", name), ("Type", category),
-                                                         ("Rationale", rationale)],
-                         lambda: self.add_hypothesis(name.text(), category.currentText(),
-                                                     rationale.toPlainText()))
-
-    def connect_dialog(self) -> None:
-        if len(self.graph.nodes) < 2:
-            self.status.setText("Add at least two nodes before creating a relationship.")
-            return
-        source, target = ThemedComboBox(), ThemedComboBox()
-        selected = sorted(item.data(0) for item in self.scene.selectedItems() if item.data(0))
-        for node in sorted(self.graph.nodes.values(), key=lambda n: (n.label, n.id)):
-            text = f"{node.label} · {node.kind} · {node.id[-8:]}"
-            source.addItem(text, node.id)
-            target.addItem(text, node.id)
-        source.setCurrentIndex(source.findData(selected[0]) if selected else 0)
-        target.setCurrentIndex(target.findData(selected[1]) if len(selected) > 1 else 1)
-        label = QLineEdit()
-        label.setPlaceholderText("e.g. suspected download, contacted, spawned")
-        rationale = QTextEdit()
-        rationale.setPlaceholderText("Explain the association and supporting evidence.")
-        self.form_dialog("Connect nodes · manual relationship",
-                         [("From", source), ("To", target), ("Relationship type", label),
-                          ("Rationale", rationale)],
-                         lambda: self.connect_nodes(source.currentData(), target.currentData(),
-                                                    label.text(), rationale.toPlainText()))
-
-    def note_dialog(self) -> None:
-        selected = [item.data(0) for item in self.scene.selectedItems() if item.data(0)]
-        if len(selected) != 1:
-            self.status.setText("Select one node to add or edit its investigator note.")
-            return
-        key = selected[0]
-        note = QTextEdit()
-        note.setPlainText(self.draft.notes.get(key, ""))
-
-        def apply() -> None:
-            draft = self.snapshot()
-            if note.toPlainText().strip():
-                draft.notes[key] = note.toPlainText().strip()
-            else:
-                draft.notes.pop(key, None)
-            self.commit_draft(draft)
-            self.node_items[key].setSelected(True)
-
-        self.form_dialog("Investigator note", [("Note", note)], apply)
-
-    def refresh_revisions(self) -> None:
-        self.revision_choice.blockSignals(True)
-        self.revision_choice.clear()
-        self.revision_choice.addItem("Original baseline", None)
-        try:
-            if self._run_id:
-                for revision in GraphRevisionRepository(workspace_database(self.workspace_path)).list_by_run(
-                        UUID(self._run_id)):
-                    self.revision_choice.addItem(
-                        f"{revision.name} · {revision.investigator} · "
-                        f"{revision.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}", str(revision.id))
-            self.revision_choice.setCurrentIndex(self.revision_choice.findData(self._revision_id))
-        except Exception as exc:
-            self.status.setText(f"Could not load saved revisions: {exc}")
-        finally:
-            self.revision_choice.blockSignals(False)
-
-    def load_revision(self) -> None:
-        selected = self.revision_choice.currentData()
-        if selected == self._revision_id:
-            return
-        if not self.confirm_discard():
-            self._set_combo(self.revision_choice, self._revision_id)
-            return
-        try:
-            if selected:
-                if not self._run_id:
-                    raise ValueError("Select an analysis run before opening a revision.")
-                revisions = GraphRevisionRepository(workspace_database(self.workspace_path)).list_by_run(
-                    UUID(self._run_id))
-                draft = next(r.draft for r in revisions if str(r.id) == selected)
-            else:
-                seeds = sorted(self.baseline.nodes,
-                               key=lambda key: (self.baseline.nodes[key].kind != "finding", key))
-                draft = GraphDraft(visible=self.baseline.neighborhood({seeds[0]}) if seeds else set())
-            self.apply_draft(draft)
-            self._revision_id = selected
-            self._set_combo(self.revision_choice, selected)
-            self.reset_history()
-        except Exception as exc:
-            self.status.setText(f"Could not open revision: {exc}")
-            self._set_combo(self.revision_choice, self._revision_id)
-
-    def save_current(self, name: str, investigator: str) -> None:
-        if not self._run_id:
-            raise ValueError("Select an analysis run before saving a revision.")
-        revision = save_revision(workspace_database(self.workspace_path), UUID(self._run_id),
-                                 name, investigator, self.snapshot())
-        self._revision_id = str(revision.id)
-        self._saved = self.snapshot()
-        self.refresh_revisions()
-        self.update_changes()
-        self.status.setText(f"Saved revision '{revision.name}' by {revision.investigator}.")
-
-    def changeEvent(self, event: QEvent) -> None:
-        super().changeEvent(event)
-        if event.type() == QEvent.Type.PaletteChange and hasattr(self, "view"):
-            color = graph_colors(self.palette())["muted"]
-            for _edge, line, arrow, label in self.edge_items:
-                pen = line.pen()
-                pen.setColor(color)
-                line.setPen(pen)
-                arrow.setPen(pen)
-                arrow.setBrush(color)
-                label.setDefaultTextColor(color)
-            self.scene.update()
-            self.view.viewport().update()
-
-    def save_dialog(self) -> bool:
-        name, investigator = QLineEdit(), QLineEdit()
-        name.setPlaceholderText("e.g. Suspicious PowerShell investigation")
-        return self.form_dialog("Save investigation revision", [("Revision name", name),
-                                                               ("Investigator", investigator)],
-                                lambda: self.save_current(name.text(), investigator.text()))
-
-    def confirm_discard(self) -> bool:
-        if not self.dirty:
-            return True
-        choice = QMessageBox.question(
-            self, "Unsaved graph changes", "Save your graph revision before leaving this investigation?",
-            QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel, QMessageBox.StandardButton.Cancel)
-        if choice == QMessageBox.StandardButton.Save:
-            return self.save_dialog()
-        return choice == QMessageBox.StandardButton.Discard
+    def _on_node_selected(self, node: GraphNode) -> None:
+        self.details_panel.display_node(node, self.raw_graph_data)
 
 
-def create_page() -> InvestigationGraphPage:
+def create_page() -> QWidget:
     return InvestigationGraphPage()

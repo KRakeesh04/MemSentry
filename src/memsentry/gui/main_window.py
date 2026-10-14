@@ -102,7 +102,7 @@ class MainWindow(QMainWindow):
         self.settings_page = SettingsPage(self.pages)
         self.help_page = HelpPage(self.pages)
         self.graph_page = InvestigationGraphPage(self.pages)
-        self.findings_page.graph_requested.connect(self._show_finding_graph)
+        self.graph_page.findings_page_requested.connect(lambda: self.sidebar.setCurrentRow(4))
         self.reports_page = ReportsPage(self.pages)
         functional = {
             "Cases": self.cases_page,
@@ -125,7 +125,7 @@ class MainWindow(QMainWindow):
         self.job_status = status
         status.setObjectName("jobStatus")
         self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (6, 8, 9)))
+        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.case_opened.connect(self._open_case)
@@ -230,8 +230,6 @@ class MainWindow(QMainWindow):
         self.analysis_timer.stop()
         self.job_status.setText(f"Analysis {run.status} · {run.id}")
         self.overview_page.refresh()
-        self.findings_page.refresh()
-        self.graph_page.refresh()
         if run.error_message:
             self.overview_page.error.setText(run.error_message)
 
@@ -253,38 +251,25 @@ class MainWindow(QMainWindow):
         self.evidence_page.analyse.setEnabled(self.evidence_page.registered_result is not None)
 
     def _open_case(self, workspace: str, case: Case) -> None:
-        if not self.graph_page.open_case(workspace, case):
-            return
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
         self.evidence_page.use_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
         self.findings_page.open_case(workspace, case)
+        self.graph_page.open_case(workspace, case)
         self.reports_page.open_case(workspace, case)
         self.sidebar.setCurrentRow(1)
-
-    def _show_finding_graph(self, run_id, finding_id) -> None:
-        self.graph_page.refresh()
-        index = self.graph_page.run_choice.findData(str(run_id))
-        if index >= 0:
-            self.graph_page.run_choice.setCurrentIndex(index)
-            if self.graph_page.run_choice.currentData() != str(run_id):
-                return
-            key = str(finding_id)
-            self.graph_page.visible = self.graph_page.graph.neighborhood({key})
-            self.graph_page.render_graph()
-            self.graph_page.capture_edit()
-            if key in self.graph_page.node_items:
-                self.graph_page.node_items[key].setSelected(True)
-            self.sidebar.setCurrentRow(5)
 
     def _page_changed(self, index: int) -> None:
         if index == 3:  # Artifacts page index
             self.artifacts_page.refresh()
-        elif index == 7:  # Activity page index
-            self.activity_page.refresh()
         elif index == 4:  # Findings page index
             self.findings_page.refresh()
+        elif index == 5:  # Investigation Graph page index
+            self.graph_page.refresh()
+        elif index == 7:  # Activity page index
+            self.activity_page.refresh()
+        
 
     def _intake_progress(self, message: str, value: int) -> None:
         overview = self.overview_page
@@ -336,9 +321,6 @@ class MainWindow(QMainWindow):
                 "Evidence intake is running",
                 "Cancel the intake and wait for it to stop before closing.",
             )
-            event.ignore()
-            return
-        if not self.graph_page.confirm_discard():
             event.ignore()
             return
         super().closeEvent(event)

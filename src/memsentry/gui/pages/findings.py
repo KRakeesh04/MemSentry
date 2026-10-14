@@ -58,8 +58,6 @@ class FindingCard(QFrame):
 class FindingsPage(QScrollArea):
     """Show findings persisted for the currently opened case."""
 
-    graph_requested = Signal(object, object)
-
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.workspace_path = ""

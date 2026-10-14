@@ -242,4 +242,24 @@ def workspace_stylesheet() -> str:
             border-color: #253244;
         }}
 
+        #workspace QMessageBox {{
+            background-color: #2B2B2E;
+        }}
+
+        #workspace QMessageBox QLabel {{
+            background-color: transparent;
+            color: #F1F5F9;
+            border: none;
+        }}
+
+        #workspace QMessageBox QLabel#qt_msgbox_label {{
+            background-color: transparent;
+            color: #F1F5F9;
+            border: none;
+        }}
+
+        #workspace QMessageBox QPushButton {{
+            min-width: 90px;
+        }}
+
     """

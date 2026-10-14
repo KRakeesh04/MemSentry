@@ -132,6 +132,42 @@
       "experimental": false
     },
     {
+      "id": "process_scan",
+      "display_name": "Process Scan",
+      "description": "Scans Windows process objects; includes terminated objects and requires coverage review.",
+      "category": "Processes",
+      "supported_os": ["windows"],
+      "volatility_plugins": {"windows": "windows.psscan.PsScan"},
+      "parser": "psscan_parser",
+      "default_enabled": false,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "threads",
+      "display_name": "Process Threads",
+      "description": "Lists Windows thread start addresses for memory-region correlation.",
+      "category": "Processes",
+      "supported_os": ["windows"],
+      "volatility_plugins": {"windows": "windows.threads.Threads"},
+      "parser": "threads_parser",
+      "default_enabled": false,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
+      "id": "memory_regions",
+      "display_name": "Memory Regions",
+      "description": "Lists Windows VAD ranges, protection and available file backing.",
+      "category": "Memory",
+      "supported_os": ["windows"],
+      "volatility_plugins": {"windows": "windows.vadinfo.VadInfo"},
+      "parser": "vadinfo_parser",
+      "default_enabled": false,
+      "requires_symbols": true,
+      "experimental": false
+    },
+    {
       "id": "handles",
       "display_name": "Open Handles",
       "description": "Lists handles owned by processes.",

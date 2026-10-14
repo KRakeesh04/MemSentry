@@ -1,193 +1,384 @@
-version: "1.0.0"
-name: "MemSentry correlation rules"
-description: >-
-  Deterministic, explainable triage rules. These rules describe correlations
-  between persisted artifacts; they are not malware verdicts. The correlation
-  engine must preserve observed artifacts separately from inferred relationships.
-
+version: '2.0.0'
+name: MemSentry evidence-backed triage
 rules:
   - id: MS-R001
     name: Executable private memory
-    description: A process owns a private memory region with executable protection.
+    description: Private executable memory warrants review; runtime-generated code is a common explanation.
     severity: medium
     score: 25
-    implementation_status: defined
     applies_to: [windows, linux, mac]
+    implementation_status: implemented
     requires:
-      all:
-        - artifact_type: memory_region
-          field: private
-          equals: true
-        - artifact_type: memory_region
-          field: protection
-          contains_any: [execute, executable, "r-x", "-wx", "rwx"]
-    group_by: pid
-    limitations:
-      - Private executable memory is common in browsers, JIT runtimes, and security tools.
-      - A missing memory-region artifact is unavailable evidence, not a negative result.
-    benign_explanations:
-      - JIT compilation
-      - Runtime unpacking
-      - Legitimate injected instrumentation
+      artifact_type: memory_region
+      as: region
+      where: &private_executable
+        all:
+          - {field: private, equals: true}
+          - {field: executable, equals: true}
+    benign_explanations: [JIT compilation, Runtime unpacking, Legitimate instrumentation]
 
   - id: MS-R002
     name: Executable private memory with network activity
-    description: A process owns executable private memory and a network connection.
+    description: The same process instance owns private executable memory and a network connection.
     severity: high
-    score: 35
-    implementation_status: defined
+    score: 40
     applies_to: [windows, linux, mac]
     requires:
       all:
-        - rule: MS-R001
-        - artifact_type: network_connection
-          relation: same_pid
-    group_by: pid
-    limitations:
-      - Network ownership may be unavailable or incomplete in a captured image.
-    benign_explanations:
-      - Browser or server JIT activity
-      - Security monitoring software
-      - Application plugins or extensions
+        - {rule: MS-R001}
+        - {artifact_type: network_connection, as: connection}
+        - {left: region, same_process_instance: connection}
+    benign_explanations: [Browser JIT and networking, Application server]
 
   - id: MS-R003
     name: Thread starts in executable private memory
-    description: A thread start address falls within an executable private memory region.
+    description: A thread starts in a private executable region; this alone does not establish remote injection.
     severity: high
-    score: 40
-    implementation_status: defined
-    applies_to: [windows]
+    score: 55
+    applies_to: [windows, linux, mac]
     requires:
       all:
-        - artifact_type: thread
-          field: start_address
-          relation: inside
-          target_artifact_type: memory_region
-        - artifact_type: memory_region
-          field: private
-          equals: true
-        - artifact_type: memory_region
-          field: protection
-          contains_any: [execute, executable, "r-x", "-wx", "rwx"]
-    group_by: pid
-    limitations:
-      - The MVP Linux and macOS plugin sets do not provide a validated equivalent thread artifact.
-    benign_explanations:
-      - Runtime-generated code
-      - Profilers or debuggers
+        - {rule: MS-R001}
+        - {artifact_type: thread, as: thread}
+        - {left: thread, inside: region, field: start_address}
+    relationships: [{source: thread, target: region, type: THREAD_STARTS_IN_REGION}]
+    limitations: [Requires normalized thread addresses; the default plugin set does not collect threads on every OS.]
+    benign_explanations: [JIT execution, Debuggers and profilers]
 
   - id: MS-R004
     name: YARA match in suspicious region
-    description: A YARA match location falls inside a suspicious executable private region.
+    description: A valid process-virtual YARA match lies in private executable memory.
     severity: high
-    score: 45
-    implementation_status: defined
+    score: 60
     applies_to: [windows, linux, mac]
     requires:
       all:
+        - {rule: MS-R001}
         - artifact_type: signature_match
-          field: match_location
-          relation: inside
-          target_artifact_type: memory_region
-        - rule: MS-R001
-    group_by: pid
-    limitations:
-      - YARA rules are investigator-supplied indicators and may produce false positives.
-      - A file-level offset cannot be treated as a process virtual address without provenance.
-    benign_explanations:
-      - Known test strings
-      - Security product signatures
-      - Embedded third-party libraries
+          as: signature
+          where: {field: valid_match, equals: true}
+        - {left: signature, inside: region, field: match_address}
+    relationships: [{source: signature, target: region, type: YARA_MATCH_IN_REGION}]
+    limitations: [Raw dump file offsets cannot establish process-virtual location.]
+    benign_explanations: [Generic signature false positives, Embedded libraries]
 
   - id: MS-R005
     name: Suspicious parent-child relationship
-    description: A configurable parent-child process relationship matches a suspicious pair.
+    description: An observed parent and child match an OS-specific configured executable-name pair.
     severity: medium
-    score: 20
-    implementation_status: defined
+    score: 30
     applies_to: [windows, linux, mac]
-    requires:
-      any:
-        - process_name: ["winword.exe", "excel.exe", "outlook.exe"]
-          child_name: ["powershell.exe", "cmd.exe", "wscript.exe", "cscript.exe"]
-        - parent_name: ["sshd", "nginx", "apache2", "httpd"]
-          child_name: ["sh", "bash", "zsh", "python", "perl"]
-    group_by: child_pid
-    configuration:
-      relationship_source: resources/rules/suspicious_parent_child.yaml
-    limitations:
-      - Legitimate automation and administration can create these relationships.
-      - Process-name matching alone is insufficient for attribution.
-    benign_explanations:
-      - Administrative scripts
-      - Software installers and update agents
+    configuration: {relationship_source: suspicious_parent_child.yaml}
+    requires: {any: []}
+    relationships: [{source: parent, target: child, type: PARENT_OF}]
+    benign_explanations: [Administrative automation, Installers]
 
   - id: MS-R006
     name: Unbacked executable module
-    description: A process has an executable module without a corresponding mapped file path.
+    description: An executable module has explicit unbacked mapping evidence.
     severity: medium
-    score: 25
-    implementation_status: defined
+    score: 35
     applies_to: [windows, linux, mac]
+    implementation_status: partial
     requires:
-      all:
-        - artifact_type: module
-          field: executable
-          equals: true
-        - artifact_type: module
-          field: path
-          one_of: [null, "", unavailable]
-    group_by: pid
-    limitations:
-      - Module extraction and path fields vary significantly by operating system.
-      - Unavailable path information is not proof that a module is unbacked.
-    benign_explanations:
-      - Anonymous runtime mappings
-      - JIT or unpacked code
+      artifact_type: module
+      as: module
+      where:
+        all:
+          - {field: executable, equals: true}
+          - {field: backing, equals: UNBACKED}
+    limitations: [Missing paths and anonymous mappings alone are not proof of an unbacked module.]
+    benign_explanations: [Runtime loaders, Legitimate instrumentation]
 
   - id: MS-R007
     name: Suspicious command line with network activity
-    description: A process command line contains a download or interpreter indicator and owns a network connection.
+    description: A command with an obfuscation or download-and-execute pattern belongs to a process with network activity.
     severity: medium
-    score: 25
-    implementation_status: defined
+    score: 40
     applies_to: [windows, linux, mac]
     requires:
       all:
         - artifact_type: command_line
-          field: command_line
-          contains_any: [powershell, cmd.exe, curl, wget, nc, netcat, /bin/sh, /bin/bash]
-        - artifact_type: network_connection
-          relation: same_pid
-    group_by: pid
-    limitations:
-      - Command-line text may be truncated or absent from the image.
-      - Common utilities have extensive legitimate uses.
-    benign_explanations:
-      - Software deployment
-      - Package management
-      - Health checks and monitoring
+          as: command
+          where: &suspicious_command
+            field: command_line_lower
+            matches_regex: '(?:\bpowershell(?:\.exe)?\b.*\s-(?:enc|encodedcommand)\s|\b(?:curl|wget)\b[^\n]*\|\s*(?:/bin/)?(?:ba)?sh\b|\b(?:iex|invoke-expression)\b.*\bdownloadstring\b|\bnc\b.*\s-e\s)'
+        - {artifact_type: network_connection, as: connection}
+        - {left: command, same_process_instance: connection}
+    benign_explanations: [Approved deployment tooling]
 
   - id: MS-R008
     name: Process artifact inconsistency
-    description: A process is present in one process view but absent from a corroborating process view.
+    description: A scanned process is absent from an explicitly complete compatible active-process view; review this low-confidence lead.
     severity: low
     score: 15
-    implementation_status: defined
     applies_to: [windows, linux, mac]
+    implementation_status: partial
     requires:
       all:
         - artifact_type: process
-          relation: present_in
-          source: process_list
+          as: scanned
+          where: {field: process_view, equals: scan}
+        - artifact_type: process_view
+          as: view
+          scope: global
+          where: {field: process_view, equals: active}
+        - {left: scanned, absent_from_view: view}
+    limitations: [Requires an explicit compatible complete view manifest; normal pslist and pstree output does not prove completeness.]
+    benign_explanations: [Process termination, Acquisition timing, Symbol or parser limitations]
+
+  - id: MS-R009
+    name: Suspicious Windows Event Log clearing
+    description: Security log clearing followed related privileged or suspicious command activity; this is an investigation sequence, not proof of malicious intent.
+    severity: high
+    score: 60
+    applies_to: [windows]
+    implementation_status: optional_telemetry
+    mitre_attack: [T1070.001]
+    requires:
+      all:
+        - artifact_type: windows_event
+          as: cleared
+          where:
+            all:
+              - {field: provider, equals: Microsoft-Windows-Eventlog}
+              - {field: channel, equals: Security}
+              - {field: event_id, equals: 1102}
+        - any:
+            - artifact_type: authentication_event
+              as: preceding
+              scope: global
+              where: {field: event_id, one_of: [4624, 4625, 4672]}
+            - artifact_type: process
+              as: preceding
+              scope: global
+              where: {field: command_line_lower, matches_regex: '\b(?:wevtutil(?:\.exe)?\s+(?:cl|clear-log)|clear-eventlog)\b'}
+        - {left: cleared, same_host: preceding}
+        - any:
+            - {left: cleared, same_logon_id: preceding}
+            - {left: cleared, same_account: preceding}
+        - {left: preceding, before: cleared}
+        - {left: preceding, within_seconds: cleared, seconds: 900}
+    relationships: [{source: preceding, target: cleared, type: FOLLOWED_BY}]
+    limitations: [Only the listed supporting events were reconstructed; failed logins often lack a usable target logon ID.]
+    benign_explanations: [Authorized maintenance, Security test]
+
+  - id: MS-R010
+    name: Suspicious LSASS access
+    description: A process has memory-read access to LSASS with additional suspicious source context; access alone does not prove credential theft.
+    severity: high
+    score: 65
+    applies_to: [windows]
+    implementation_status: optional_telemetry
+    mitre_attack: [T1003.001]
+    requires:
+      all:
+        - any:
+            - {artifact_type: process_access, as: access, where: &lsass_access {all: [{field: target_name, equals: lsass.exe}, {field: can_read_memory, equals: true}]}}
+            - {artifact_type: process_handle, as: access, where: *lsass_access}
+            - {artifact_type: handle, as: access, where: *lsass_access}
+        - any:
+            - {artifact_type: process_access, as: access, where: {field: source_trust, equals: untrusted}}
+            - {artifact_type: process_handle, as: access, where: {field: source_trust, equals: untrusted}}
+            - {artifact_type: handle, as: access, where: {field: source_trust, equals: untrusted}}
+            - all:
+                - artifact_type: command_line
+                  as: dump_command
+                  where: {field: command_line_lower, matches_regex: '(?:\bprocdump(?:64)?(?:\.exe)?\b.*\s-ma\b.*\blsass|\bcomsvcs(?:\.dll)?\s*,?\s*minidump\b|\bsekurlsa::)'}
+                - {left: access, same_process_instance: dump_command}
+    benign_explanations: [Security software, Approved diagnostic tools]
+
+  - id: MS-R011
+    name: Potential LSASS memory dump
+    description: Suspicious LSASS access precedes a validated LSASS dump observation by the same source process instance.
+    severity: critical
+    score: 85
+    applies_to: [windows]
+    implementation_status: optional_telemetry
+    mitre_attack: [T1003.001]
+    requires:
+      all:
+        - {rule: MS-R010}
+        - artifact_type: dump_file
+          as: dump
+          where:
+            all:
+              - {field: target_name, equals: lsass.exe}
+              - {field: dump_validated, equals: true}
+              - {field: dump_format, one_of: [minidump, full_dump]}
+        - {left: access, same_process_instance: dump}
+        - {left: access, same_target_process: dump}
+        - {left: access, before: dump}
+        - {left: access, within_seconds: dump, seconds: 120}
+    relationships: [{source: access, target: dump, type: FOLLOWED_BY}]
+    limitations: [An ordinary .dmp filename or process access alone is insufficient.]
+    benign_explanations: [Authorized diagnostic collection]
+
+  - id: MS-R012
+    name: Potential process injection or suspicious generated-code execution
+    description: Corroborating memory execution indicators warrant injection investigation; remote injection is only supported when cross-process write and thread telemetry are attached.
+    severity: high
+    score: 75
+    applies_to: [windows, linux, mac]
+    mitre_attack: [T1055]
+    requires:
+      any:
+        - all:
+            - {rule: MS-R003}
+            - any: [{rule: MS-R004}, {rule: MS-R002}]
+        - all:
+            - {rule: MS-R014}
+            - {artifact_type: process_memory_write, as: write}
+            - {left: write, same_source_process: remote}
+            - {left: write, same_target_process: remote}
+            - {left: write, before: remote}
+            - {left: write, within_seconds: remote, seconds: 60}
+    benign_explanations: [JIT execution, Profiling and instrumentation]
+
+  - id: MS-R013
+    name: Potential process hollowing
+    description: An unexplained executable-section mismatch has corroborating entry-point or tampering evidence, consistent with possible hollowing.
+    severity: high
+    score: 80
+    applies_to: [windows]
+    implementation_status: partial
+    mitre_attack: [T1055.012]
+    requires:
+      all:
+        - {rule: MS-R016}
+        - any:
+            - {artifact_type: image_memory_comparison, as: comparison, where: {field: entry_point_anomaly, equals: true}}
+            - all:
+                - {artifact_type: process_tampering, as: tamper, where: {field: tampering_type, one_of: [Image is replaced, image_replaced, image_hollowing]}}
+                - {left: comparison, same_process_instance: tamper}
+    benign_explanations: [Authorized binary instrumentation]
+
+  - id: MS-R014
+    name: Suspicious remote thread creation
+    description: A recorded remote-thread start address falls within a private executable region of a reliably identified target process.
+    severity: high
+    score: 70
+    applies_to: [windows, linux, mac]
+    implementation_status: optional_telemetry
+    requires:
+      all:
+        - {artifact_type: remote_thread, as: remote}
+        - {artifact_type: memory_region, as: target_region, scope: global, where: *private_executable}
+        - {left: remote, target_process: target_region}
+        - not: [{left: remote, same_process_instance: target_region}]
+        - {left: remote, inside: target_region, field: start_address}
+    relationships: [{source: remote, target: target_region, type: THREAD_STARTS_IN_REGION}]
+    limitations: [Mapping continuity at the historical thread event is unproven unless supplied by the evidence source.]
+    benign_explanations: [Debugging, Approved instrumentation]
+
+  - id: MS-R015
+    name: Unexpected Windows system process
+    description: A critical Windows executable has an unexpected resolved system path and unexpected observed parent; investigate identity and signature.
+    severity: medium
+    score: 45
+    applies_to: [windows]
+    implementation_status: partial
+    requires:
+      all:
         - artifact_type: process
-          relation: absent_from
-          source: process_tree
-    group_by: pid
-    limitations:
-      - Different Volatility process views have different coverage and failure modes.
-      - This is a lead for review, not proof of process hiding.
-    benign_explanations:
-      - Termination during acquisition
-      - Parser or symbol limitations
-      - Incomplete process-tree coverage
+          as: system_process
+          where:
+            all:
+              - {field: process_name, one_of: [lsass.exe, svchost.exe, services.exe, winlogon.exe, csrss.exe, smss.exe]}
+              - {field: system_path_expected, equals: false}
+              - {field: windows_major_version, one_of: [6, 10, 11]}
+        - {artifact_type: process, as: system_parent, scope: global}
+        - {left: system_parent, parent_child: system_process}
+        - any:
+            - all:
+                - {artifact_type: process, as: system_process, where: {field: process_name, equals: svchost.exe}}
+                - {artifact_type: process, as: system_parent, where: {field: process_name, not_equals: services.exe}}
+            - all:
+                - {artifact_type: process, as: system_process, where: {field: process_name, one_of: [lsass.exe, services.exe]}}
+                - {artifact_type: process, as: system_parent, where: {field: process_name, not_equals: wininit.exe}}
+            - all:
+                - {artifact_type: process, as: system_process, where: {field: process_name, one_of: [winlogon.exe, csrss.exe, smss.exe]}}
+                - {artifact_type: process, as: system_parent, where: {field: process_name, not_equals: smss.exe}}
+    limitations: [Requires recorded Windows version and system root; terminated or missing parents remain unresolved.]
+    benign_explanations: [Test systems, Renamed executables]
+
+  - id: MS-R016
+    name: Executable image-memory mismatch
+    description: Reliable PE executable-section comparison found differences outside accounted relocation and loader-change ranges.
+    severity: high
+    score: 65
+    applies_to: [windows]
+    implementation_status: partial
+    requires:
+      artifact_type: image_memory_comparison
+      as: comparison
+      where:
+        all:
+          - {field: comparison_method, equals: pe_executable_sections_v1}
+          - {field: comparison_reliable, equals: true}
+          - {field: unexplained_mismatch_count, greater_than: 0}
+          - {field: relocations_accounted, equals: true}
+          - {field: loader_changes_accounted, equals: true}
+    limitations: [Requires a compatible reference image and complete mapped executable sections; copy-on-write alone is not suspicious.]
+    benign_explanations: [Legitimate patches, Hot patching, Instrumentation]
+
+  - id: MS-R017
+    name: Suspicious memory protection transition
+    description: Observed writable-to-executable protection telemetry precedes thread execution in that region.
+    severity: high
+    score: 60
+    applies_to: [windows, linux, mac]
+    implementation_status: optional_telemetry
+    requires:
+      all:
+        - artifact_type: memory_protection_transition
+          as: transition
+          where:
+            all:
+              - {field: old_writable, equals: true}
+              - {field: old_executable, equals: false}
+              - {field: new_executable, equals: true}
+        - {artifact_type: thread, as: execution}
+        - {left: execution, inside: transition, field: start_address}
+        - {left: transition, same_process_instance: execution}
+        - {left: transition, before: execution}
+        - {left: transition, within_seconds: execution, seconds: 60}
+    relationships: [{source: transition, target: execution, type: FOLLOWED_BY}]
+    limitations: [A snapshot cannot establish a historical protection transition.]
+    benign_explanations: [JIT compilation, Runtime loaders]
+  - id: MS-R018
+    name: Multi-stage suspicious process behavior
+    description: The same source process accessed and wrote to a target, created a remote thread in suspicious target memory, then used the network.
+    severity: critical
+    score: 90
+    applies_to: [windows, linux, mac]
+    implementation_status: optional_telemetry
+    requires:
+      all:
+        - {rule: MS-R014}
+        - {artifact_type: process_access, as: stage_access}
+        - {artifact_type: process_memory_write, as: write}
+        - {artifact_type: network_connection, as: stage_network}
+        - {left: stage_access, same_source_process: write}
+        - {left: write, same_source_process: remote}
+        - {left: remote, same_process_instance: stage_network}
+        - {left: stage_access, same_target_process: write}
+        - {left: write, same_target_process: remote}
+        - optional:
+            artifact_type: process
+            as: creation
+            where: *suspicious_command
+        - sequence:
+            steps:
+              - {binding: creation, optional: true}
+              - {binding: stage_access}
+              - {binding: write}
+              - {binding: remote}
+              - {binding: stage_network}
+            entity: same_process_instance
+            seconds: 300
+    relationships:
+      - {source: stage_access, target: write, type: FOLLOWED_BY}
+      - {source: write, target: remote, type: FOLLOWED_BY}
+      - {source: remote, target: stage_network, type: FOLLOWED_BY}
+    benign_explanations: [Authorized instrumentation and monitoring]

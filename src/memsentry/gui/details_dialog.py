@@ -28,6 +28,7 @@ class DetailsDialog(QDialog):
     ) -> None:
         super().__init__(parent)
 
+        self.setObjectName("detailsDialog")
         self.setWindowTitle(title)
         self.resize(720, 560)
         self.setMinimumSize(640, 480)

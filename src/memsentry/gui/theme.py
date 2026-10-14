@@ -133,6 +133,18 @@ def workspace_stylesheet() -> str:
     return f"""
         QWidget#workspace {{ background: {background}; color: {text}; }}
         QDialog#analysisDialog {{ background: {surface}; color: {text}; }}
+        {'''QDialog#detailsDialog { background: #11151C; color: #E5E7EB; }
+        QDialog#detailsDialog QPushButton {
+            background: #1B212B; color: #E5E7EB; border: 1px solid #303947;
+            border-radius: 6px; padding: 8px 16px;
+        }
+        QDialog#detailsDialog QPushButton:hover,
+        QDialog#detailsDialog QPushButton:focus {
+            background: #20334F; border-color: #60A5FA;
+        }
+        QDialog#detailsDialog QPushButton#primaryButton {
+            background: #20334F; color: #60A5FA; border-color: #60A5FA;
+        }''' if dark else ''}
         #workspace QListWidget {{
             background: {surface}; color: {text}; border: 1px solid {border};
             border-radius: 6px; selection-background-color: {selected};
@@ -361,41 +373,45 @@ def workspace_stylesheet() -> str:
             border-color: {"#253244" if dark else "#E2E8F0"};
         }}
 
-        #workspace QMessageBox {{
-            background-color: {"#2B2B2E" if dark else "#F8FAFC"};
+        QMessageBox, #workspace QMessageBox {{
+            background-color: {surface};
+            color: {text};
         }}
 
-        #workspace QMessageBox QLabel {{
+        QMessageBox QLabel, #workspace QMessageBox QLabel {{
             background-color: transparent;
-            color: {"#F1F5F9" if dark else "#0F172A"};
+            color: {text};
             border: none;
         }}
 
-        #workspace QMessageBox QLabel#qt_msgbox_label {{
+        QMessageBox QLabel#qt_msgbox_label, #workspace QMessageBox QLabel#qt_msgbox_label {{
             background-color: transparent;
-            color: {"#F1F5F9" if dark else "#0F172A"};
+            color: {text};
             border: none;
         }}
 
-        #workspace QMessageBox QPushButton {{
+        QMessageBox QPushButton, #workspace QMessageBox QPushButton {{
             min-width: 90px;
-            background-color: {"#182230" if dark else "#FFFFFF"};
-            color: {"#CBD5E1" if dark else "#334155"};
-            border: 1px solid {"#334155" if dark else "#CBD5E1"};
+            background-color: {surface};
+            color: {text};
+            border: 1px solid {border};
             border-radius: 6px;
             padding: 6px 12px;
         }}
 
-        #workspace QMessageBox QPushButton:hover {{
-            background-color: {"#223043" if dark else "#F1F5F9"};
-            color: {"#FFFFFF" if dark else "#0F172A"};
-            border-color: {"#475569" if dark else "#94A3B8"};
+        QMessageBox QPushButton:hover, #workspace QMessageBox QPushButton:hover {{
+            background-color: {selected};
+            color: {text};
+            border-color: {accent};
         }}
 
-        #workspace QMessageBox QPushButton:pressed {{
-            background-color: {"#0F172A" if dark else "#E2E8F0"};
-            color: {"#FFFFFF" if dark else "#0F172A"};
-            border-color: #3B82F6;
+        QMessageBox QPushButton:pressed, #workspace QMessageBox QPushButton:pressed {{
+            background-color: {selected};
+            color: {text};
+            border-color: {accent};
+        }}
+        QMessageBox QPushButton:focus, #workspace QMessageBox QPushButton:focus {{
+            border-color: {accent};
         }}
 
         #workspace QGraphicsView#investigationGraphCanvas {{

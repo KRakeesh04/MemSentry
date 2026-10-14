@@ -313,7 +313,7 @@ class MainWindow(QMainWindow):
             self.overview_page.error.setText(f"Evidence saved; overview could not refresh: {exc}")
 
     def _apply_theme(self) -> None:
-        self.workspace.setStyleSheet(workspace_stylesheet())
+        self.setStyleSheet(workspace_stylesheet())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.analysis_worker is not None:

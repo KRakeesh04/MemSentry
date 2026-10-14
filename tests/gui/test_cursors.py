@@ -1,5 +1,5 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QAbstractButton, QComboBox, QLineEdit, QPushButton
+from PySide6.QtWidgets import QAbstractButton, QComboBox, QLineEdit, QMessageBox, QPushButton
 
 from memsentry.gui.main_window import MainWindow
 
@@ -42,3 +42,20 @@ def test_dynamic_controls_receive_cursor_without_affecting_other_windows(qtbot):
     qtbot.addWidget(unrelated)
     unrelated.ensurePolished()
     assert unrelated.cursor().shape() == Qt.CursorShape.ArrowCursor
+
+
+def test_popup_buttons_receive_pointer_cursors(qtbot):
+    window = MainWindow()
+    qtbot.addWidget(window)
+    for parent in (window, window.overview_page):
+        dialog = QMessageBox(parent)
+        qtbot.addWidget(dialog)
+        dialog.setStandardButtons(QMessageBox.StandardButton.Ok)
+        dialog.show()
+        button = dialog.button(QMessageBox.StandardButton.Ok)
+        assert button.cursor().shape() == Qt.CursorShape.PointingHandCursor
+        button.setEnabled(False)
+        assert button.cursor().shape() == Qt.CursorShape.ArrowCursor
+        button.setEnabled(True)
+        assert button.cursor().shape() == Qt.CursorShape.PointingHandCursor
+        dialog.close()

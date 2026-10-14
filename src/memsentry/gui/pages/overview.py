@@ -1,6 +1,9 @@
 """Case dashboard showing recorded evidence, runs, and findings."""
 
-from PySide6.QtCore import Qt, QTimer, Signal
+import hashlib
+from pathlib import Path
+
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -188,14 +191,14 @@ class OverviewPage(QScrollArea):
         recent_card = QFrame()
         self.recent_card = recent_card
         recent_card.setObjectName("card")
-        recent_card.setMaximumWidth(320)
-        recent_card.setMinimumWidth(250)
+        recent_card.setFixedSize(320, 420)
         recent_layout = QVBoxLayout(recent_card)
         recent_layout.setContentsMargins(16, 20, 16, 20)
         recent_layout.addWidget(label("Recent cases", "sectionTitle"))
         self.recent_layout = QVBoxLayout()
         self.recent_layout.setSpacing(8)
         recent_layout.addLayout(self.recent_layout)
+        recent_layout.addStretch()
         columns.addWidget(recent_card, 1,  Qt.AlignmentFlag.AlignTop)
         layout.addLayout(columns)
         layout.addWidget(label("Recorded findings", "sectionTitle"))
@@ -208,11 +211,19 @@ class OverviewPage(QScrollArea):
         self.workflow_timer.setInterval(1000)
         self.workflow_timer.timeout.connect(self._poll_workflow)
         self.workflow_timer.start()
+        self.settings = QSettings("MemSentry", "MemSentry")
+        self.workspace_path = str(self.settings.value("intake/workspace", ""))
+        self._refresh_recent_cases()
 
     def open_case(self, workspace: str, case: Case) -> None:
         self._intake_active = False
         self.workspace_path = workspace
         self.case = case
+        key = self._recent_settings_key()
+        accessed = self.settings.value(key, [], type=list)
+        accessed = [str(case.id)] + [item for item in accessed if item != str(case.id)]
+        self.settings.setValue(key, accessed[:4])
+        self.settings.setValue("intake/workspace", workspace)
         self.refresh()
 
     def use_workspace(self, workspace: str) -> None:
@@ -226,7 +237,11 @@ class OverviewPage(QScrollArea):
         self.columns.setDirection(
             QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
         )
-        self.recent_card.setMaximumWidth(16777215 if narrow else 320)
+
+    def _recent_settings_key(self) -> str:
+        workspace = str(Path(self.workspace_path).expanduser().resolve())
+        digest = hashlib.sha256(workspace.encode()).hexdigest()
+        return f"overview/recent_cases/{digest}"
 
     def _refresh_recent_cases(self) -> None:
         clear_layout(self.recent_layout)
@@ -246,7 +261,13 @@ class OverviewPage(QScrollArea):
                 )
                 return
 
-            recent_cases = CaseRepository(database).list_all()[:5]
+            cases = CaseRepository(database).list_all()
+            accessed = self.settings.value(self._recent_settings_key(), [], type=list)
+            by_id = {str(case.id): case for case in cases}
+            recent_cases = [by_id[item] for item in accessed if item in by_id][:4]
+            # Older installations have no access history; show available cases initially.
+            if not accessed:
+                recent_cases = cases[:4]
 
             if not recent_cases:
                 self.recent_layout.addWidget(
@@ -261,9 +282,14 @@ class OverviewPage(QScrollArea):
                     short_number = short_number[:18] + "…"
 
                 button = ChoiceCard(
-                    recent.name,
+                    recent.name if len(recent.name) <= 26 else recent.name[:25] + "…",
                     f"{short_number} · {recent.status.title()}",
                 )
+                button.setFixedHeight(76)
+                button.title_label.setWordWrap(False)
+                button.description_label.setWordWrap(False)
+                button.title_label.setMinimumWidth(0)
+                button.description_label.setMinimumWidth(0)
 
                 button.setChecked(
                     self.case is not None and recent.id == self.case.id

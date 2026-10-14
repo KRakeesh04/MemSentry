@@ -22,6 +22,27 @@ from memsentry.storage.repositories.evidence_repository import EvidenceRepositor
 from memsentry.storage.repositories.finding_repository import FindingRepository
 
 
+def test_recent_cases_restore_access_order_and_fixed_size(qtbot, tmp_path, monkeypatch):
+    settings = QSettings(str(tmp_path / "recent.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr("memsentry.gui.pages.overview.QSettings", lambda *_: settings)
+    cases = [create_case(str(tmp_path), f"CASE-{i}", f"Case {i}", "") for i in range(6)]
+    settings.setValue("intake/workspace", str(tmp_path))
+    page = OverviewPage()
+    qtbot.addWidget(page)
+    assert page.case is None
+    assert page.recent_layout.count() == 4
+    for index in [0, 3, 1, 5, 2, 3]:
+        page.open_case(str(tmp_path), cases[index])
+    restored = OverviewPage()
+    qtbot.addWidget(restored)
+    assert restored.case is None
+    assert [restored.recent_layout.itemAt(i).widget().accessibleName()
+            for i in range(4)] == ["Case 3", "Case 2", "Case 5", "Case 1"]
+    assert restored.recent_card.minimumSize() == restored.recent_card.maximumSize()
+    assert restored.recent_card.width() == 320
+    assert restored.recent_card.height() == 420
+
+
 def test_analysis_errors_are_summarized_with_expandable_originals(qtbot):
     from types import SimpleNamespace
     from uuid import uuid4

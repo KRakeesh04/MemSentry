@@ -191,12 +191,18 @@ def test_correlation_rule_ms_r004_yara_match() -> None:
         original_data={
             "rule": "Malware_Signature",
             "offset": "0x1500",
+            "address_space": "process_virtual",
         },
         provenance={"source": "yara"},
         created_at=datetime.now(UTC),
     )
 
-    result = engine.correlate([process_artifact, yara_artifact], analysis_run_id)
+    region = process_artifact.model_copy(update={
+        "id": uuid4(), "artifact_type": "memory_region",
+        "original_data": {"start": "0x1000", "end": "0x2000", "private": True,
+                          "protection": "PAGE_EXECUTE_READ"},
+    })
+    result = engine.correlate([process_artifact, yara_artifact, region], analysis_run_id)
 
     # Should trigger MS-R004
     yara_findings = [f for f in result.findings if f.rule_id == "MS-R004"]
@@ -229,7 +235,8 @@ def test_correlation_rule_ms_r006_unbacked_module() -> None:
         pid=1234,
         original_data={
             "executable": True,
-            "path": None,  # Unbacked module
+            "path": None,
+            "backing": "UNBACKED",  # Explicit mapping evidence, not a missing path.
         },
         provenance={"source": "test"},
         created_at=datetime.now(UTC),
@@ -328,14 +335,10 @@ def test_correlation_os_specific_rules() -> None:
     assert len(windows_rules_ids) > 0
     assert len(linux_rules_ids) > 0
 
-    # MS-R003 is Windows-only in both YAML and fallback rules
-    assert "MS-R003" in windows_rules_ids
-    # When using fallback rules, MS-R003 is Windows-only
-    # Check that it's not in Linux rules or verify OS filtering works
-    if "MS-R003" in linux_rules_ids:
-        # If using YAML rules, check that the rule is filtered by OS
-        ms_r003_rule = next(r for r in linux_engine.rules if r.rule_id == "MS-R003")
-        assert "linux" not in ms_r003_rule.applicable_os
+    # Windows telemetry rules remain explicitly inapplicable to Linux.
+    assert "MS-R009" in windows_rules_ids
+    ms_r009_rule = next(r for r in linux_engine.rules if r.rule_id == "MS-R009")
+    assert "linux" not in ms_r009_rule.applicable_os
 
 
 def test_correlation_multiple_suspicious_indicators() -> None:

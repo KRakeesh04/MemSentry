@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 
 from PySide6.QtCore import QSettings
+from PySide6.QtWidgets import QLabel
 
 from memsentry.gui.main_window import MainWindow
 from memsentry.gui.pages.help import HelpPage
@@ -111,6 +112,15 @@ def test_help_page_renders_diagnostics(qtbot):
     qtbot.addWidget(page)
 
     assert "Help & Documentation" in page.findChild(object, "pageTitle").text()
+    page_text = " ".join(lbl.text() for lbl in page.findChildren(object, "sectionTitle"))
+    assert "Case Setup & Intake" in page_text
+    assert "Baseline Verification" in page_text
+    assert "Volatility 3 Analysis" in page_text
+    assert "Correlation & Findings" in page_text
+
+    all_labels = " ".join(lbl.text() for lbl in page.findChildren(QLabel))
+    assert "RESTRICTED FORENSIC SYSTEM" in all_labels
+    assert "AUTHORIZED OFFICERS ONLY" in all_labels
 
 
 def test_main_window_settings_and_help_navigation(qtbot):

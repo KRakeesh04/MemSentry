@@ -60,37 +60,67 @@ class HelpPage(QScrollArea):
         steps = [
             (
                 "1 · Case Setup & Intake",
-                "Create an investigation case in a workspace folder. Import existing memory dumps (.dmp, .raw, .vmem) or acquire live system RAM using elevated tools.",
+                [
+                    "Create or open an investigation workspace folder",
+                    "Import existing memory dumps (.dmp, .raw, .vmem, .lime)",
+                    "Acquire live system RAM using elevated acquisition tools",
+                ],
             ),
             (
                 "2 · Baseline Verification",
-                "MemSentry automatically computes SHA-256 hashes before and after analysis to ensure memory images remain read-only and un-tampered.",
+                [
+                    "Compute automatic SHA-256 hashes upon intake",
+                    "Continuous pre- and post-analysis integrity verification",
+                    "Guarantees memory images remain read-only and un-tampered",
+                ],
             ),
             (
                 "3 · Volatility 3 Analysis",
-                "Run automated Volatility 3 plugins (pslist, pstree, cmdline, netscan, malfind) and YARA rules to detect code injection and process anomalies.",
+                [
+                    "Execute core Volatility 3 plugins (pslist, pstree, netscan)",
+                    "Detect code injections and hidden memory via malfind",
+                    "Scan with YARA rules to identify malware signatures",
+                ],
             ),
             (
                 "4 · Correlation & Findings",
-                "Review automated findings prioritized by severity (Critical, High, Medium, Low) and explore process contexts and network artifacts.",
+                [
+                    "Review findings prioritized by severity (Critical to Low)",
+                    "Correlate process trees with network connection artifacts",
+                    "Export court-ready reports in HTML and JSON formats",
+                ],
             ),
         ]
 
-        for index, (header, text) in enumerate(steps):
+        for index, (header, points) in enumerate(steps):
             card = QFrame()
             card.setObjectName("card")
             card_layout = QVBoxLayout(card)
-            card_layout.setContentsMargins(16, 16, 16, 16)
-            card_layout.setSpacing(8)
+            card_layout.setContentsMargins(18, 16, 18, 16)
+            card_layout.setSpacing(10)
 
             step_header = QLabel(header)
             step_header.setObjectName("sectionTitle")
-            step_text = QLabel(text)
-            step_text.setWordWrap(True)
-            step_text.setObjectName("muted")
-
             card_layout.addWidget(step_header)
-            card_layout.addWidget(step_text)
+
+            points_layout = QVBoxLayout()
+            points_layout.setSpacing(6)
+            for point in points:
+                row = QHBoxLayout()
+                row.setContentsMargins(0, 0, 0, 0)
+                row.setSpacing(8)
+                bullet = QLabel("•")
+                bullet.setObjectName("muted")
+                bullet.setFixedWidth(10)
+                bullet.setAlignment(Qt.AlignmentFlag.AlignTop)
+                text_lbl = QLabel(point)
+                text_lbl.setWordWrap(True)
+                text_lbl.setObjectName("muted")
+                row.addWidget(bullet)
+                row.addWidget(text_lbl, 1)
+                points_layout.addLayout(row)
+
+            card_layout.addLayout(points_layout)
             grid.addWidget(card, index // 2, index % 2)
 
         layout.addLayout(grid)
@@ -129,6 +159,39 @@ class HelpPage(QScrollArea):
             diag_layout.addLayout(row)
 
         layout.addWidget(diag_card)
+
+        # Section 3: Legal & Authorization Notice
+        notice_card = QFrame()
+        notice_card.setObjectName("card")
+        notice_layout = QHBoxLayout(notice_card)
+        notice_layout.setContentsMargins(20, 16, 20, 16)
+        notice_layout.setSpacing(14)
+
+        notice_icon = QLabel("⚖")
+        notice_icon.setObjectName("integrityWarning")
+        notice_icon.setStyleSheet("font-size: 20px;")
+        notice_layout.addWidget(notice_icon)
+
+        notice_text_layout = QVBoxLayout()
+        notice_text_layout.setSpacing(4)
+
+        notice_title = QLabel("RESTRICTED FORENSIC SYSTEM · AUTHORIZED OFFICERS ONLY")
+        notice_title.setObjectName("integrityWarning")
+        notice_title.setStyleSheet("font-weight: 700; font-size: 13px; letter-spacing: 0.5px;")
+
+        notice_desc = QLabel(
+            "This software and its investigative tools are restricted strictly to authorized law enforcement officers, "
+            "forensic examiners, and security personnel. All memory acquisitions, analyses, and exported evidence "
+            "are subject to legal chain-of-custody protocols and regulatory standards. Unauthorized access or use is strictly prohibited."
+        )
+        notice_desc.setObjectName("muted")
+        notice_desc.setWordWrap(True)
+
+        notice_text_layout.addWidget(notice_title)
+        notice_text_layout.addWidget(notice_desc)
+        notice_layout.addLayout(notice_text_layout, 1)
+
+        layout.addWidget(notice_card)
         layout.addStretch()
         self.setWidget(content)
 

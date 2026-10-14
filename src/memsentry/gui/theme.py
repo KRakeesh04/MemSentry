@@ -38,8 +38,57 @@ def workspace_stylesheet() -> str:
         #workspace QPushButton[severity="critical"],
         #workspace QPushButton[severity="high"] {{ border-left: 3px solid #C65C5C; }}
         #workspace QPushButton[severity="medium"] {{ border-left: 3px solid #BD8B3D; }}
+        #workspace QLabel#severityBadge {{
+            padding: 3px 8px;
+            border-radius: 8px;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        #workspace QLabel#severityBadge[severity="critical"] {{
+            color: #F87171;
+            background: rgba(248, 113, 113, 0.12);
+        }}
+        #workspace QLabel#severityBadge[severity="high"] {{
+                color: #FB923C;
+            background: rgba(251, 146, 60, 0.12);
+        }}
+        #workspace QLabel#severityBadge[severity="medium"] {{
+            color: {"#FACC15" if dark else "#785A00"};
+            background: rgba(250, 204, 21, 0.12);
+        }}
+        #workspace QLabel#severityBadge[severity="low"] {{
+            color: #60A5FA;
+            background: rgba(96, 165, 250, 0.12);
+        }}
+
+        #workspace QLabel#severityBadge[severity="informational"] {{
+            color: #94A3B8;
+            background: rgba(148, 163, 184, 0.12);
+        }}
         #workspace QFrame#card {{
             background: {surface}; border: 1px solid {border}; border-radius: 10px;
+        }}
+        #workspace QFrame#findingCard {{
+            background: {surface};
+            border: 1px solid {border};
+            border-radius: 10px;
+        }}
+
+        #workspace QFrame#findingCard:hover, #workspace QFrame#findingCard:focus {{
+            border: 1px solid {accent};
+            background: {selected};
+        }}
+        #workspace QLabel#findingDetailsHint {{ color: {accent}; }}
+        #workspace QFrame#successCard {{
+            background: {"#182A24" if dark else "#ECFDF5"};
+            border: 1px solid {"#2F6B57" if dark else "#86EFAC"};
+            border-radius: 10px;
+        }}
+
+        #workspace QLabel#successTitle {{
+            color: {"#6FCFA9" if dark else "#18734A"};
+            font-size: 16px;
+            font-weight: bold;
         }}
         #workspace QLabel#previewBanner, #workspace QLabel#jobStatus {{
             background: {surface}; color: {muted}; padding: 14px 24px;
@@ -105,9 +154,20 @@ def workspace_stylesheet() -> str:
         }}
         #workspace QPushButton#fileDropArea {{
             border: 2px dashed {border}; border-radius: 10px;
-            background: {surface}; color: {text}; padding: 24px;
+            background: {surface}; color: {text}; padding: 16px;
         }}
         #workspace QPushButton#fileDropArea:hover {{ border-color: {accent}; background: {selected}; }}
+        #workspace QLabel#systemFieldLabel {{
+            color: {muted};
+            font-size: 11px;
+            font-weight: 600;
+        }}
+
+        #workspace QLabel#systemFieldValue {{
+            color: {text};
+            font-size: 14px;
+            font-weight: 500;
+        }}
         #workspace QPushButton#graphControlButton {{
             min-width: 34px;
             max-width: 34px;

@@ -4,7 +4,7 @@ import platform
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QObject, QSettings, QThread, Signal
+from PySide6.QtCore import QObject, QSettings, QThread, Signal, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -17,9 +17,10 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
+    QSpacerItem, 
+    QSizePolicy
 )
 
 from memsentry.acquisition.config import load_environment_file
@@ -85,9 +86,11 @@ class EvidencePage(QScrollArea):
 
         self.form = QFrame()
         self.form.setObjectName("card")
+
         form_layout = QVBoxLayout(self.form)
         form_layout.setContentsMargins(24, 24, 24, 24)
         form_layout.setSpacing(16)
+
         self.mode = ThemedComboBox(self.form)
         self.mode.addItems(["Import memory image", "Live memory acquisition"])
         self.mode.setAccessibleName("Evidence source")
@@ -105,6 +108,7 @@ class EvidencePage(QScrollArea):
             mode_cards.addWidget(card, 1)
         self.mode_buttons.idClicked.connect(self.mode.setCurrentIndex)
         form_layout.addLayout(mode_cards)
+
         self.mode_hint = QLabel()
         self.mode_hint.setWordWrap(True)
         self.mode_hint.setObjectName("muted")
@@ -120,6 +124,7 @@ class EvidencePage(QScrollArea):
         self.case_name = QLineEdit()
         self.case_name.setPlaceholderText("New case name, or the exact name of an existing case")
         form.addRow("Workspace", self._path_row(self.workspace, directory=True))
+
         case_row = QWidget()
         case_layout = QHBoxLayout(case_row)
         case_layout.setContentsMargins(0, 0, 0, 0)
@@ -127,6 +132,7 @@ class EvidencePage(QScrollArea):
         self.existing_cases.addItem("Create a new case", None)
         self.existing_cases.currentIndexChanged.connect(self._select_case)
         case_layout.addWidget(self.existing_cases, 1)
+
         refresh = QPushButton("Load cases")
         refresh.clicked.connect(self._load_cases)
         case_layout.addWidget(refresh)
@@ -141,12 +147,15 @@ class EvidencePage(QScrollArea):
         self.source = QLineEdit()
         self.source.setPlaceholderText("Select a .raw, .mem, .lime, or other memory image")
         self.drop_area = FileDropArea()
+        self.drop_area.setMinimumHeight(120)
+        self.drop_area.setMaximumHeight(140)
         self.drop_area.clicked.connect(lambda: self._browse(self.source, False))
         self.drop_area.file_selected.connect(self.source.setText)
         self.drop_area.invalid_drop.connect(self._failed)
         import_form.addRow(self.drop_area)
         import_form.addRow("Selected image", self._path_row(self.source))
-        self.file_details = QLabel("No file selected · original evidence stays read-only")
+
+        self.file_details = QLabel("No memory image selected.")
         self.file_details.setObjectName("muted")
         self.file_details.setWordWrap(True)
         self.source.textChanged.connect(self._file_selected)
@@ -161,11 +170,35 @@ class EvidencePage(QScrollArea):
         live_form.setContentsMargins(0, 0, 0, 0)
         live_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         live_form.addRow(SystemCard())
-        live_form.addRow(QLabel("Acquisition tool"))
-        load_env = QPushButton("Load .env…")
-        load_env.setToolTip("Load tool paths; existing environment variables take precedence.")
+
+        live_form.addItem(QSpacerItem(
+            0,
+            10,
+            QSizePolicy.Policy.Minimum,
+            QSizePolicy.Policy.Fixed,
+        ))
+
+        tool_header = QWidget()
+        tool_header_layout = QHBoxLayout(tool_header)
+        tool_header_layout.setContentsMargins(0, 0, 0, 0)
+
+        tool_title = QLabel("Acquisition tool")
+        tool_title.setObjectName("sectionTitle")
+        tool_header_layout.addWidget(tool_title)
+
+        tool_header_layout.addStretch()
+
+        load_env = QPushButton("Load configuration…")
+        load_env.setToolTip(
+            "Load acquisition tool paths from an environment configuration file."
+        )
         load_env.clicked.connect(self._load_environment)
-        live_form.addRow(load_env)
+        tool_header_layout.addWidget(load_env)
+
+        live_form.addRow(tool_header)
+
+        live_form.setVerticalSpacing(10)
+
         self.tool_choices = QButtonGroup(self)
         self.configured_tools = available_tools()
         for index, option in enumerate(self.configured_tools):
@@ -195,11 +228,15 @@ class EvidencePage(QScrollArea):
         self._tool_selected(selected)
         self.profile = ThemedComboBox()
         self.profile.addItems(
-            ["AVML legacy: avml output.lime", "AVML current: avml acquire output.lime"]
+            [
+                "Current AVML",
+                "Legacy AVML",
+            ]
         )
-        self.profile.setCurrentIndex(1)
+        self.profile.setCurrentIndex(0)
         self.profile.setToolTip(
-            "Current AVML requires the acquire subcommand. Choose legacy only for older binaries."
+            "Use Current AVML for modern releases. "
+            "Choose Legacy AVML only for older AVML binaries."
         )
         if platform.system() == "Linux":
             live_form.addRow("AVML version", self.profile)
@@ -207,13 +244,52 @@ class EvidencePage(QScrollArea):
             self.profile.setParent(self.live_fields)
             self.profile.hide()
         self.authorized = QCheckBox("I am authorized to capture memory on this host.")
-        live_form.addRow(self.authorized)
+        
         form_layout.addWidget(self.live_fields)
+
+        self.case_section = QWidget()
+
+        case_section_layout = QVBoxLayout(self.case_section)
+        case_section_layout.setContentsMargins(0, 0, 0, 0)
+        case_section_layout.setSpacing(12)
+
         case_heading = QLabel("Case & storage")
         case_heading.setObjectName("sectionTitle")
-        form_layout.addWidget(case_heading)
-        form_layout.addLayout(form)
+        case_section_layout.addWidget(case_heading)
+
+        case_section_layout.addLayout(form)
+
+        form_layout.addWidget(self.case_section)
+
+        self.active_case_card = QFrame()
+        self.active_case_card.setObjectName("card")
+        self.active_case_card.hide()
+
+        active_case_layout = QVBoxLayout(self.active_case_card)
+        active_case_layout.setContentsMargins(16, 12, 16, 12)
+        active_case_layout.setSpacing(4)
+
+        self.active_case_title = QLabel()
+        self.active_case_title.setObjectName("sectionTitle")
+
+        self.active_case_details = QLabel()
+        self.active_case_details.setObjectName("muted")
+
+        active_case_layout.addWidget(self.active_case_title)
+        active_case_layout.addWidget(self.active_case_details)
+
+        form_layout.addWidget(self.active_case_card)
+
         layout.addWidget(self.form)
+
+        self.authorization_row = QWidget()
+        authorization_layout = QHBoxLayout(self.authorization_row)
+        authorization_layout.setContentsMargins(0, 0, 0, 0)
+
+        authorization_layout.addWidget(self.authorized)
+        authorization_layout.addStretch()
+
+        layout.addWidget(self.authorization_row)
 
         actions = QHBoxLayout()
         self.start = QPushButton("Import and verify")
@@ -234,12 +310,34 @@ class EvidencePage(QScrollArea):
         self.progress.setAccessibleName("Evidence intake progress")
         self.progress.setValue(0)
         layout.addWidget(self.progress)
-        self.result = QTextEdit()
-        self.result.setReadOnly(True)
-        self.result.setAccessibleName("Evidence registration result")
-        self.result.setPlaceholderText("Verified evidence details and SHA-256 will appear here.")
-        self.result.setMinimumHeight(160)
-        layout.addWidget(self.result)
+        self.progress.hide()
+
+        self.result_card = QFrame()
+        self.result_card.setObjectName("successCard")
+        self.result_card.hide()
+
+        result_layout = QVBoxLayout(self.result_card)
+        result_layout.setContentsMargins(16, 12, 16, 12)
+        result_layout.setSpacing(6)
+
+        self.result_title = QLabel()
+        self.result_title.setObjectName("successTitle")
+
+        self.result_summary = QLabel()
+        self.result_summary.setWordWrap(True)
+
+        self.result_hash = QLabel()
+        self.result_hash.setObjectName("muted")
+        self.result_hash.setWordWrap(True)
+        self.result_hash.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+
+        result_layout.addWidget(self.result_title)
+        result_layout.addWidget(self.result_summary)
+        result_layout.addWidget(self.result_hash)
+
+        layout.addWidget(self.result_card)
         note = QLabel(
             "Registration does not run Volatility or correlation. "
             "Format and plugin compatibility are checked during analysis."
@@ -308,7 +406,7 @@ class EvidencePage(QScrollArea):
                 return
             size = path.stat().st_size
             self.file_details.setText(
-                f"{size:,} bytes · {size / 1024**3:.2f} GiB · read-only import"
+                f"{path.name} · {size / 1024**3:.2f} GiB · read-only import"
             )
         except OSError as exc:
             self.file_details.setText(f"Cannot read file details: {exc}")
@@ -344,6 +442,7 @@ class EvidencePage(QScrollArea):
                     self.existing_cases.setCurrentIndex(self.existing_cases.count() - 1)
         self.existing_cases.blockSignals(False)
         self._select_case()
+        
         if selected is None:
             self.case_number.setText(number or generate_case_number())
             self.case_name.setText(name)
@@ -360,6 +459,14 @@ class EvidencePage(QScrollArea):
             if self.existing_cases.itemData(index).id == case.id:
                 self.existing_cases.setCurrentIndex(index)
                 self._select_case()
+
+                self.case_section.hide()
+                self.active_case_card.show()
+
+                self.active_case_title.setText(case.name)
+                self.active_case_details.setText(
+                    f"{case.case_number} · {case.status.title()}"
+                )
                 return True
         self._failed("This case is no longer open or available. Refresh the case overview.")
         return False
@@ -373,14 +480,15 @@ class EvidencePage(QScrollArea):
 
     def _mode_changed(self) -> None:
         live = self.mode.currentIndex() == 1
+        self.authorization_row.setVisible(live)
         self.mode_buttons.button(self.mode.currentIndex()).setChecked(True)
         self.live_fields.setVisible(live)
         self.import_fields.setVisible(not live)
         self.start.setText("Capture and verify" if live else "Import and verify")
         self.mode_hint.setText(
-            "Capture uses system authentication (Polkit / UAC). Only the tool is elevated. "
-            "Cancellation waits for elevated capture to finish. Select a configured tool or browse "
-            "for a compatible executable; arbitrary commands and other dump-tool formats are not supported."
+                "Live capture uses system authentication. "
+                "Only the acquisition tool is elevated. "
+                "Cancellation may wait until the elevated capture finishes."
             if live
             else "The original image stays in its current location and is opened read-only. "
             "Two SHA-256 passes establish and verify its baseline."
@@ -426,11 +534,16 @@ class EvidencePage(QScrollArea):
             source=None if live else Path(self.source.text().strip()),
             evidence_os=os_values[self.os_choice.currentIndex()],
             tool_path=tool_path,
-            avml_modern=self.profile.currentIndex() == 1,
+            avml_modern=self.profile.currentIndex() == 0,
         )
         self.settings.setValue("intake/workspace", str(request.workspace))
         self.settings.setValue("intake/tool", self.tool.text().strip())
-        self.result.clear()
+        self.progress_label.show()
+        self.progress.show()
+        self.result_card.hide()
+        self.result_title.clear()
+        self.result_summary.clear()
+        self.result_hash.clear()
         self.registered_result = None
         self.analyse.hide()
         self.analyse.setEnabled(False)
@@ -446,6 +559,7 @@ class EvidencePage(QScrollArea):
         self.worker.start()
 
     def _progress(self, message: str, value: int) -> None:
+        self.progress.show()
         self.intake_progress.emit(message, value)
         self.progress_label.setText(message)
         self.progress.setRange(0, 0 if value < 0 else 100)
@@ -456,11 +570,22 @@ class EvidencePage(QScrollArea):
     def _succeeded(self, result: IntakeResult) -> None:
         self.registered_result = result
         evidence = result.evidence
-        self.result.setPlainText(
-            f"✓ Evidence verified and registered\n\nFile: {evidence.file_path}\n"
-            f"Size: {evidence.file_size_bytes:,} bytes\nSHA-256: {evidence.sha256}\n"
-            f"Evidence ID: {evidence.id}\nDatabase: {result.database_path}\nAudit: {result.audit_path}"
+        self.result_card.show()
+        self.progress_label.hide()
+        self.progress.hide()
+
+        self.result_title.setText("Evidence verified and registered")
+
+        self.result_summary.setText(
+            f"{Path(evidence.file_path).name} · "
+            f"{evidence.file_size_bytes / 1024**3:.2f} GiB\n"
+            f"Audit: {result.audit_path}"
         )
+
+        self.result_hash.setText(
+            f"SHA-256: {evidence.sha256}"
+        )
+
         self.evidence_registered.emit(result)
         self.analyse.setHidden(False)
         self.analyse.setEnabled(self.worker is None)
@@ -475,7 +600,9 @@ class EvidencePage(QScrollArea):
         self.progress.setRange(0, 100)
         self.progress.setValue(0)
         self.progress_label.setText(message)
-        self.result.setPlainText(message)
+        self.result.show()
+        self.progress.hide()
+        self.registration_details_button.hide()
         self.status_changed.emit(message)
 
     def _finished(self) -> None:

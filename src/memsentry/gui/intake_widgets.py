@@ -81,22 +81,32 @@ class SystemCard(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("card")
+
         layout = QGridLayout(self)
-        layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(16)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setHorizontalSpacing(24)
+        layout.setVerticalSpacing(8)
+
         heading = QLabel("Detected system")
         heading.setObjectName("sectionTitle")
         layout.addWidget(heading, 0, 0, 1, 3)
+
         try:
             ram = f"{psutil.virtual_memory().total / 1024**3:.1f} GiB"
             seconds = max(0, int(time.time() - psutil.boot_time()))
-            uptime = f"{seconds // 86400}d {(seconds // 3600) % 24}h {(seconds // 60) % 60}m"
+            uptime = (
+                f"{seconds // 86400}d "
+                f"{(seconds // 3600) % 24}h "
+                f"{(seconds // 60) % 60}m"
+            )
         except (OSError, RuntimeError):
             ram, uptime = "Unavailable", "Unavailable"
+
         try:
             user = getpass.getuser()
         except (OSError, KeyError):
             user = "Unavailable"
+
         details = [
             ("HOSTNAME", platform.node()),
             ("OS", f"{platform.system()} {platform.release()}"),
@@ -105,13 +115,23 @@ class SystemCard(QFrame):
             ("UPTIME", uptime),
             ("USER", user),
         ]
+
         for index, (name, value) in enumerate(details):
-            row, col = 1 + (index // 3) * 2, index % 3
-            caption, content = QLabel(name), QLabel(value or "Unavailable")
-            caption.setObjectName("muted")
+            row = 1 + (index // 3) * 2
+            col = index % 3
+
+            caption = QLabel(name)
+            caption.setObjectName("systemFieldLabel")
+
+            content = QLabel(value or "Unavailable")
+            content.setObjectName("systemFieldValue")
             content.setTextFormat(Qt.TextFormat.PlainText)
             content.setWordWrap(True)
-            content.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            content.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+
             layout.addWidget(caption, row, col)
             layout.addWidget(content, row + 1, col)
+
             layout.setColumnStretch(col, 1)

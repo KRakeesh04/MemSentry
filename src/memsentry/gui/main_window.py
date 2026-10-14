@@ -26,8 +26,10 @@ from memsentry.gui.pages.artifacts import ArtifactsPage
 from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.findings import FindingsPage
-from memsentry.gui.pages.investigation_graph import InvestigationGraphPage
+from memsentry.gui.pages.help import HelpPage
 from memsentry.gui.pages.overview import OverviewPage
+from memsentry.gui.pages.settings import SettingsPage
+from memsentry.gui.pages.investigation_graph import InvestigationGraphPage
 from memsentry.gui.pages.reports import ReportsPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
@@ -85,7 +87,7 @@ class MainWindow(QMainWindow):
         workspace_layout.setContentsMargins(0, 0, 0, 0)
         workspace_layout.setSpacing(0)
         preview = QLabel(
-            "PREVIEW PAGE · Synthetic examples; Cases, Overview, Evidence intake, Artifacts, Activity, and Findings use real records"
+            "PREVIEW PAGE · Synthetic examples; Cases, Overview, Evidence intake, Artifacts, Activity, Findings, Settings, and Help use real records"
         )
         preview.setObjectName("previewBanner")
         preview.setWordWrap(True)
@@ -95,8 +97,10 @@ class MainWindow(QMainWindow):
         self.cases_page = CasesPage(self.pages)
         self.overview_page = OverviewPage(self.pages)
         self.activity_page = ActivityPage(self.pages)
-        self.findings_page = FindingsPage(self.pages)
         self.artifacts_page = ArtifactsPage(self.pages)
+        self.findings_page = FindingsPage(self.pages)
+        self.settings_page = SettingsPage(self.pages)
+        self.help_page = HelpPage(self.pages)
         self.graph_page = InvestigationGraphPage(self.pages)
         self.graph_page.findings_page_requested.connect(lambda: self.sidebar.setCurrentRow(4))
         self.reports_page = ReportsPage(self.pages)
@@ -108,6 +112,8 @@ class MainWindow(QMainWindow):
             "Reports": self.reports_page,
             "Activity": self.activity_page,
             "Findings": self.findings_page,
+            "Settings": self.settings_page,
+            "Help": self.help_page,
             "Investigation Graph": self.graph_page,
         }
         for name in self.PAGE_NAMES:
@@ -119,12 +125,13 @@ class MainWindow(QMainWindow):
         self.job_status = status
         status.setObjectName("jobStatus")
         self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (4, 5, 8, 9)))
+        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.case_opened.connect(self._open_case)
         self.overview_page.case_opened.connect(self._open_case)
         self.overview_page.cases_requested.connect(lambda: self.sidebar.setCurrentRow(0))
+        self.overview_page.findings_requested.connect(lambda: self.sidebar.setCurrentRow(4))
         self.overview_page.import_requested.connect(self._add_case_evidence)
         self.overview_page.analyze_requested.connect(self._start_analysis)
         self.evidence_page.evidence_registered.connect(self._evidence_registered)
@@ -246,6 +253,7 @@ class MainWindow(QMainWindow):
     def _open_case(self, workspace: str, case: Case) -> None:
         self.overview_page.open_case(workspace, case)
         self.activity_page.open_case(workspace, case)
+        self.evidence_page.use_case(workspace, case)
         self.artifacts_page.open_case(workspace, case)
         self.findings_page.open_case(workspace, case)
         self.graph_page.open_case(workspace, case)
@@ -261,6 +269,7 @@ class MainWindow(QMainWindow):
             self.graph_page.refresh()
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
+        
 
     def _intake_progress(self, message: str, value: int) -> None:
         overview = self.overview_page

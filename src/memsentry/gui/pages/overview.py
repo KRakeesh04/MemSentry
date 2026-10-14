@@ -55,6 +55,7 @@ class OverviewPage(QScrollArea):
     import_requested = Signal()
     cases_requested = Signal()
     case_opened = Signal(str, object)
+    findings_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -117,9 +118,15 @@ class OverviewPage(QScrollArea):
         evidence_layout.addWidget(self.integrity)
         self.details = label("Add a memory image to begin.")
         evidence_layout.addWidget(self.details)
-        self.hash = label("", "muted")
-        self.hash.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        evidence_layout.addWidget(self.hash)
+        self.evidence_details_button = QPushButton("View evidence details")
+        self.evidence_details_button.setEnabled(False)
+        self.evidence_details_button.clicked.connect(self._show_evidence_details)
+
+        details_row = QHBoxLayout()
+        details_row.addStretch()
+        details_row.addWidget(self.evidence_details_button)
+
+        evidence_layout.addLayout(details_row)
         main.addWidget(evidence_card)
         main.addWidget(label("Analysis history", "sectionTitle"))
         self.run_choice = ThemedComboBox()
@@ -133,9 +140,6 @@ class OverviewPage(QScrollArea):
         main.addWidget(self.run_choice)
         self.run_status = label("No recorded analysis", "muted")
         main.addWidget(self.run_status)
-        main.addWidget(label("Recorded findings", "sectionTitle"))
-        self.findings_layout = QVBoxLayout()
-        main.addLayout(self.findings_layout)
         main.addStretch()
         main_widget = QWidget()
         main_widget.setLayout(main)
@@ -143,15 +147,19 @@ class OverviewPage(QScrollArea):
         recent_card = QFrame()
         self.recent_card = recent_card
         recent_card.setObjectName("card")
-        recent_card.setMaximumWidth(280)
+        recent_card.setMaximumWidth(320)
+        recent_card.setMinimumWidth(250)
         recent_layout = QVBoxLayout(recent_card)
         recent_layout.setContentsMargins(16, 20, 16, 20)
         recent_layout.addWidget(label("Recent cases", "sectionTitle"))
         self.recent_layout = QVBoxLayout()
+        self.recent_layout.setSpacing(8)
         recent_layout.addLayout(self.recent_layout)
-        recent_layout.addStretch()
-        columns.addWidget(recent_card, 1)
+        columns.addWidget(recent_card, 1,  Qt.AlignmentFlag.AlignTop)
         layout.addLayout(columns)
+        layout.addWidget(label("Recorded findings", "sectionTitle"))
+        self.findings_layout = QVBoxLayout()
+        layout.addLayout(self.findings_layout)
         self.workflow = WorkflowStepper()
         layout.addWidget(self.workflow)
         self.setWidget(content)
@@ -172,7 +180,7 @@ class OverviewPage(QScrollArea):
         self.columns.setDirection(
             QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
         )
-        self.recent_card.setMaximumWidth(16777215 if narrow else 280)
+        self.recent_card.setMaximumWidth(16777215 if narrow else 320)
 
     def refresh(self) -> None:
         self._intake_active = False
@@ -206,10 +214,22 @@ class OverviewPage(QScrollArea):
             self.evidence_choice.blockSignals(False)
             self._evidence_changed()
             clear_layout(self.recent_layout)
-            for recent in CaseRepository(self.database).list_all()[:6]:
-                button = ChoiceCard(recent.name, f"{recent.case_number} · {recent.status.title()}")
+            for recent in CaseRepository(self.database).list_all()[:4]:
+                short_number = recent.case_number
+
+                if len(short_number) > 18:
+                    short_number = short_number[:18] + "…"
+
+                button = ChoiceCard(
+                    recent.name,
+                    f"{short_number} · {recent.status.title()}",
+                )
                 button.setChecked(recent.id == case.id)
-                button.setToolTip(recent.name)
+                button.setToolTip(
+                    f"{recent.name}\n"
+                    f"{recent.case_number}\n"
+                    f"Status: {recent.status.title()}"
+                )
                 button.clicked.connect(
                     lambda checked=False, item=recent: self.case_opened.emit(
                         self.workspace_path, item
@@ -223,6 +243,24 @@ class OverviewPage(QScrollArea):
             self.evidence_choice.clear()
             clear_layout(self.recent_layout)
 
+    def _show_evidence_details(self) -> None:
+        evidence = self.evidence_choice.currentData()
+
+        if evidence is None:
+            return
+
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Evidence details")
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+
+        dialog.setText(
+            f"{evidence.original_filename}\n\n"
+            f"Path:\n{evidence.file_path}\n\n"
+            f"SHA-256:\n{evidence.sha256}"
+        )
+
+        dialog.exec()
+
     def _evidence_changed(self) -> None:
         evidence = self.evidence_choice.currentData()
         self.analyze_button.setEnabled(bool(evidence and self.case and self.case.status == "open"
@@ -234,8 +272,9 @@ class OverviewPage(QScrollArea):
         if evidence is None:
             self.integrity.setText("No evidence registered")
             self.details.setText("Add a memory image to begin.")
-            self.hash.clear()
+            self.evidence_details_button.setEnabled(False)
         else:
+            self.evidence_details_button.setEnabled(True)
             verified = evidence.integrity_status == "verified"
             self.integrity.setObjectName("verified" if verified else "integrityWarning")
             self.integrity.setText(
@@ -244,10 +283,9 @@ class OverviewPage(QScrollArea):
             self.details.setText(
                 f"OS: {evidence.evidence_os or 'Not identified'}  ·  "
                 f"Image size: {evidence.file_size_bytes / 1024**3:.2f} GiB\n"
-                f"Registered: {evidence.registered_at:%Y-%m-%d %H:%M} UTC\n"
-                f"Path: {evidence.file_path}"
+                f"Registered: {evidence.registered_at:%Y-%m-%d %H:%M} UTC"
             )
-            self.hash.setText(f"SHA-256 baseline\n{evidence.sha256}")
+            
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")
@@ -273,38 +311,74 @@ class OverviewPage(QScrollArea):
         self.run_status.setText("No recorded analysis — absence of findings does not mean clean.")
         if run is not None:
             self.run_status.setText(
-                f"Run: {run.id}\nStatus: {run.status}\n{run.error_message or ''}"
+                f"Run: {str(run.id)[:8]}  ·  Status: {run.status.title()}"
             )
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")
                 findings = FindingRepository(self.database).list_by_analysis_run(run.id)
                 plugins = PluginRunRepository(self.database).list_by_analysis_run(run.id)
+
                 if plugins:
-                    self.run_status.setText(self.run_status.text() + "\n\n" + "\n".join(
-                        f"{plugin.plugin_name}: {plugin.status}"
-                        + (f" — {plugin.error_message}" if plugin.error_message else "")
-                        for plugin in plugins))
+                    completed = sum(1 for plugin in plugins if plugin.status == "completed")
+                    failed = sum(1 for plugin in plugins if plugin.status == "failed")
+
+                    self.run_status.setText(
+                        self.run_status.text()
+                        + f"\nPlugins: {len(plugins)}  ·  Completed: {completed}  ·  Failed: {failed}"
+                    )
             except Exception as exc:
                 findings_error = True
                 self.error.setText(f"Could not load findings: {exc}")
-        severity_order = {
-            value: index
-            for index, value in enumerate(["critical", "high", "medium", "low", "informational"])
-        }
-        for finding in sorted(findings, key=lambda item: severity_order[item.severity]):
-            confidence = (
-                f"{finding.confidence:.0%}" if finding.confidence is not None else "Not recorded"
+
+        if findings:
+            counts = {
+                "critical": 0,
+                "high": 0,
+                "medium": 0,
+                "low": 0,
+                "informational": 0,
+            }
+
+            for finding in findings:
+                severity = finding.severity.value
+                if severity in counts:
+                    counts[severity] += 1
+
+            summary_card = QFrame()
+            summary_card.setObjectName("card")
+
+            summary_layout = QVBoxLayout(summary_card)
+            summary_layout.setContentsMargins(16, 16, 16, 16)
+            summary_layout.setSpacing(8)
+
+            top_row = QHBoxLayout()
+
+            top_row.addWidget(
+                label(f"Total findings: {len(findings)}", "sectionTitle")
             )
-            button = ChoiceCard(
-                f"{finding.severity.upper()} · {finding.title}",
-                f"{finding.rule_id} · Confidence: {confidence}",
+
+            top_row.addStretch()
+
+            view_findings = QPushButton("View findings")
+            view_findings.clicked.connect(self.findings_requested.emit)
+            top_row.addWidget(view_findings)
+
+            summary_layout.addLayout(top_row)
+
+            summary_layout.addWidget(
+                label(
+                    f"Critical: {counts['critical']}   ·   "
+                    f"High: {counts['high']}   ·   "
+                    f"Medium: {counts['medium']}   ·   "
+                    f"Low: {counts['low']}   ·   "
+                    f"Informational: {counts['informational']}",
+                    "muted",
+                )
             )
-            button.setCheckable(False)
-            button.setProperty("severity", finding.severity.value)
-            button.setToolTip("Open finding details and provenance identifiers")
-            button.clicked.connect(lambda checked=False, item=finding: self._show_finding(item))
-            self.findings_layout.addWidget(button)
+
+            self.findings_layout.addWidget(summary_card)
+
         if not findings:
             self.findings_layout.addWidget(
                 label(

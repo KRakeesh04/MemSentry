@@ -1,12 +1,16 @@
 """Inspect stage history, hash checks, plugin status, and audit actions."""
 
+import json
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
@@ -184,6 +188,11 @@ class ActivityPage(QScrollArea):
         refresh_btn.clicked.connect(self.refresh)
 
         action_row.addWidget(refresh_btn)
+        self.export_button = QPushButton("Export filtered logs…")
+        self.export_button.setToolTip("Save all currently filtered events in table order as a .log file")
+        self.export_button.setEnabled(False)
+        self.export_button.clicked.connect(self._export_logs)
+        action_row.addWidget(self.export_button)
 
 
         filters_container.addLayout(action_row)
@@ -429,6 +438,7 @@ class ActivityPage(QScrollArea):
         return s
 
     def _render_events(self, events: list[dict[str, Any]]) -> None:
+        self.export_button.setEnabled(bool(events))
         sorting_was_enabled = self.table.isSortingEnabled()
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
@@ -540,6 +550,50 @@ class ActivityPage(QScrollArea):
             self.integrity_val.setText("0 Verified")
 
         self.failures_val.setText(f"{failed_count} Failed")
+
+    def _export_logs(self) -> None:
+        events = [
+            self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+            for row in range(self.table.rowCount())
+        ]
+        if not events:
+            return
+        filters = {
+            "evidence": self.evidence_combo.currentText(),
+            "run": self.run_combo.currentText(),
+            "status": self.status_combo.currentText(),
+            "integrity": self.integrity_combo.currentText(),
+            "search": self.search_input.text(),
+        }
+        exported_at = datetime.now(UTC)
+        header = {
+            "exported_at": exported_at.isoformat(),
+            "case_id": str(self.case.id) if self.case else None,
+            "case_number": self.case.case_number if self.case else None,
+            "filters": filters,
+            "event_count": len(events),
+        }
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export filtered activity logs",
+            f"{self.case.case_number if self.case else 'unknown'}-activity-{exported_at:%Y%m%d-%H%M%S}.log", "Log files (*.log)")
+        if not filename:
+            return
+        path = Path(filename)
+        if path.suffix.lower() != ".log":
+            path = path.with_name(path.name + ".log")
+        try:
+            # Never overwrite an existing file, which could be case evidence.
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write("# MemSentry activity log\n")
+                stream.write("# " + json.dumps(header, ensure_ascii=False) + "\n")
+                for event in events:
+                    stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except FileExistsError:
+            self.message.setText("Export not saved: that file already exists. Choose a new filename.")
+        except (OSError, TypeError, ValueError) as exc:
+            self.message.setText(f"Could not export logs: {exc}")
+        else:
+            self.message.setText(f"Exported {len(events)} filtered events to {path}")
 
     def _show_details(self, row: int, col: int) -> None:
         item = self.table.item(row, 0)

@@ -263,6 +263,7 @@ class GraphCanvas(QGraphicsView):
         super().__init__(parent)
         self._graph_scene = QGraphicsScene(self)
         self.setScene(self._graph_scene)
+        self.setObjectName("investigationGraphCanvas")
 
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)

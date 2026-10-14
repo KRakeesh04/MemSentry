@@ -31,6 +31,49 @@ def test_settings_page_loads_and_saves(qtbot, tmp_path, monkeypatch):
         del os.environ["MEMSENTRY_SYMBOLS"]
 
 
+def test_settings_page_theme_switch_and_save(qtbot, qapp, tmp_path, monkeypatch):
+    from memsentry.gui.theme import THEME_DARK, THEME_LIGHT, is_dark_theme, workspace_stylesheet
+
+    settings_file = str(tmp_path / "theme_settings.ini")
+    monkeypatch.setattr(
+        "memsentry.gui.pages.settings.QSettings",
+        lambda *_: QSettings(settings_file, QSettings.Format.IniFormat),
+    )
+
+    page = SettingsPage()
+    qtbot.addWidget(page)
+
+    assert page.theme_choice.count() >= 2
+    light_index = page.theme_choice.findData(THEME_LIGHT)
+    assert light_index >= 0
+
+    # Switch to Light Theme
+    page.theme_choice.setCurrentIndex(light_index)
+    assert not is_dark_theme()
+    assert "#F1F5F9" in workspace_stylesheet()
+
+    page.save_button.click()
+    assert "saved successfully" in page.status_message.text()
+
+    ini_settings = QSettings(settings_file, QSettings.Format.IniFormat)
+    assert ini_settings.value("appearance/theme") == THEME_LIGHT
+
+    # Re-open page to verify persistence
+    reloaded_page = SettingsPage()
+    qtbot.addWidget(reloaded_page)
+    assert reloaded_page.theme_choice.currentData() == THEME_LIGHT
+
+    # Switch back to Dark Theme
+    dark_index = page.theme_choice.findData(THEME_DARK)
+    assert dark_index >= 0
+    page.theme_choice.setCurrentIndex(dark_index)
+    assert is_dark_theme()
+    assert "#11151C" in workspace_stylesheet()
+
+    page.save_button.click()
+    assert ini_settings.value("appearance/theme") == THEME_DARK
+
+
 def test_help_page_renders_diagnostics(qtbot):
     page = HelpPage()
     qtbot.addWidget(page)

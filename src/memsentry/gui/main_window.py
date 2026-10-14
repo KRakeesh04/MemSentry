@@ -27,10 +27,10 @@ from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.findings import FindingsPage
 from memsentry.gui.pages.help import HelpPage
-from memsentry.gui.pages.overview import OverviewPage
-from memsentry.gui.pages.settings import SettingsPage
 from memsentry.gui.pages.investigation_graph import InvestigationGraphPage
+from memsentry.gui.pages.overview import OverviewPage
 from memsentry.gui.pages.reports import ReportsPage
+from memsentry.gui.pages.settings import SettingsPage
 from memsentry.gui.sidebar import Sidebar
 from memsentry.gui.theme import workspace_stylesheet
 from memsentry.models.analysis_run import AnalysisRun
@@ -141,6 +141,7 @@ class MainWindow(QMainWindow):
         self.evidence_page.intake_failed.connect(self.overview_page.show_intake_failure)
         workspace_layout.addWidget(status)
         layout.addWidget(self.workspace, 1)
+        self.settings_page.settings_changed.connect(self._apply_theme)
         app = QApplication.instance()
         assert isinstance(app, QApplication)
         app.paletteChanged.connect(self._apply_theme)
@@ -269,7 +270,7 @@ class MainWindow(QMainWindow):
             self.graph_page.refresh()
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
-        
+
 
     def _intake_progress(self, message: str, value: int) -> None:
         overview = self.overview_page

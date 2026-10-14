@@ -6,7 +6,7 @@ import importlib.util
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, Signal
+from PySide6.QtCore import QSettings, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFormLayout,
@@ -23,6 +23,15 @@ from volatility3.framework import constants
 
 from memsentry.acquisition.config import load_environment_file
 from memsentry.acquisition.tool_catalog import available_tools
+from memsentry.gui.controls import ThemedComboBox
+from memsentry.gui.theme import (
+    THEME_DARK,
+    THEME_LIGHT,
+    THEME_SYSTEM,
+    apply_theme,
+    get_saved_theme,
+    save_theme,
+)
 from memsentry.version import __version__
 
 
@@ -33,6 +42,7 @@ class SettingsPage(QScrollArea):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._loading_settings = False
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -53,7 +63,7 @@ class SettingsPage(QScrollArea):
         layout.addLayout(heading)
 
         subtitle = QLabel(
-            "Manage workspace defaults, forensic symbols, acquisition tools, and scanner configurations."
+            "Manage interface theme, workspace defaults, forensic symbols, acquisition tools, and scanner configurations."
         )
         subtitle.setObjectName("muted")
         subtitle.setWordWrap(True)
@@ -64,7 +74,29 @@ class SettingsPage(QScrollArea):
         self.status_message.setObjectName("muted")
         layout.addWidget(self.status_message)
 
-        # Section 1: Workspace & Storage
+        # Section 1: Appearance & Theme
+        theme_card, theme_box = self._create_card("Appearance & Theme")
+        theme_desc = QLabel(
+            "Select your preferred visual style. You can switch between Dark and Light mode, or follow your operating system default."
+        )
+        theme_desc.setObjectName("muted")
+        theme_desc.setWordWrap(True)
+        theme_box.addWidget(theme_desc)
+
+        theme_form = QFormLayout()
+        theme_form.setSpacing(12)
+
+        self.theme_choice = ThemedComboBox()
+        self.theme_choice.addItem("Dark Theme", THEME_DARK)
+        self.theme_choice.addItem("Light Theme", THEME_LIGHT)
+        self.theme_choice.addItem("System Default", THEME_SYSTEM)
+        self.theme_choice.currentIndexChanged.connect(self._theme_selection_changed)
+
+        theme_form.addRow("Interface Theme", self.theme_choice)
+        theme_box.addLayout(theme_form)
+        layout.addWidget(theme_card)
+
+        # Section 2: Workspace & Storage
         ws_card, ws_box = self._create_card("Workspace & Storage")
         ws_form = QFormLayout()
         ws_form.setSpacing(12)
@@ -151,6 +183,18 @@ class SettingsPage(QScrollArea):
         default_ws = str(qsettings.value("intake/workspace", ""))
         self.workspace_input.setText(default_ws)
 
+        self._loading_settings = True
+        try:
+            saved_theme = get_saved_theme(qsettings)
+            index = self.theme_choice.findData(saved_theme)
+            if index >= 0:
+                self.theme_choice.setCurrentIndex(index)
+            else:
+                self.theme_choice.setCurrentIndex(0)
+            apply_theme(saved_theme)
+        finally:
+            self._loading_settings = False
+
         symbols_path = os.environ.get("MEMSENTRY_SYMBOLS", "")
         self.symbols_input.setText(symbols_path)
 
@@ -180,6 +224,10 @@ class SettingsPage(QScrollArea):
         qsettings = QSettings("MemSentry", "MemSentry")
         qsettings.setValue("intake/workspace", ws_path)
 
+        theme_mode = self.theme_choice.currentData() or THEME_DARK
+        save_theme(theme_mode, qsettings)
+        apply_theme(theme_mode)
+
         symbols_path = self.symbols_input.text().strip()
         if symbols_path:
             os.environ["MEMSENTRY_SYMBOLS"] = symbols_path
@@ -188,6 +236,13 @@ class SettingsPage(QScrollArea):
 
         self.status_message.setText("Settings saved successfully.")
         self.settings_changed.emit()
+
+    def _theme_selection_changed(self, index: int) -> None:
+        if getattr(self, "_loading_settings", False):
+            return
+        theme_mode = self.theme_choice.currentData()
+        if theme_mode:
+            apply_theme(theme_mode)
 
     def _browse_workspace(self) -> None:
         path = QFileDialog.getExistingDirectory(

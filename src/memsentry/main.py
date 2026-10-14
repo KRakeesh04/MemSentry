@@ -7,6 +7,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from memsentry.app.bootstrap import load_portable_configuration
 from memsentry.gui.branding import application_icon
 from memsentry.gui.main_window import MainWindow
+from memsentry.gui.theme import apply_saved_theme
 
 
 def main() -> None:
@@ -19,6 +20,7 @@ def main() -> None:
     application.setApplicationName("MemSentry")
     application.setDesktopFileName("memsentry")
     application.setWindowIcon(application_icon())
+    apply_saved_theme(application)
     try:
         load_portable_configuration()
     except (OSError, ValueError) as exc:

@@ -1,11 +1,130 @@
-"""Shared workspace colors and component styling."""
+"""Shared workspace colors, palettes, and component styling."""
 
-from PySide6.QtGui import QPalette
+from __future__ import annotations
+
+from PySide6.QtCore import QSettings
+from PySide6.QtGui import QColor, QPalette
 from PySide6.QtWidgets import QApplication
+
+THEME_DARK = "dark"
+THEME_LIGHT = "light"
+THEME_SYSTEM = "system"
+
+THEMES = (
+    (THEME_DARK, "Dark Theme"),
+    (THEME_LIGHT, "Light Theme"),
+    (THEME_SYSTEM, "System Default"),
+)
+
+_system_palette: QPalette | None = None
+
+
+def get_system_palette() -> QPalette:
+    """Return a copy of the default system palette captured at startup."""
+    global _system_palette
+    if _system_palette is None:
+        app = QApplication.instance()
+        if app is not None and isinstance(app, QApplication):
+            _system_palette = QPalette(app.palette())
+        else:
+            _system_palette = QPalette()
+    return QPalette(_system_palette)
+
+
+def create_dark_palette() -> QPalette:
+    """Construct a full dark color palette for application surfaces."""
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#11151C"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#E5E7EB"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#1B212B"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#11151C"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#1B212B"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#E5E7EB"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#E5E7EB"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#1B212B"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#E5E7EB"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#F87171"))
+    palette.setColor(QPalette.ColorRole.Link, QColor("#60A5FA"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2563EB"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#A5B0C0"))
+    return palette
+
+
+def create_light_palette() -> QPalette:
+    """Construct a full light color palette for application surfaces."""
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#F1F5F9"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#F8FAFC"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#172033"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#DC2626"))
+    palette.setColor(QPalette.ColorRole.Link, QColor("#2563EB"))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2563EB"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#FFFFFF"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#526174"))
+    return palette
+
+
+def is_dark_theme() -> bool:
+    """Determine whether the current application theme is dark."""
+    app = QApplication.instance()
+    if app is not None and isinstance(app, QApplication):
+        return app.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    return True
+
+
+def apply_theme(theme_mode: str, app: QApplication | None = None) -> None:
+    """Apply the specified theme mode ('dark', 'light', or 'system') to the application."""
+    if app is None:
+        instance = QApplication.instance()
+        if isinstance(instance, QApplication):
+            app = instance
+    if app is None:
+        return
+
+    # Capture system palette before overriding
+    get_system_palette()
+
+    mode = (theme_mode or THEME_DARK).lower().strip()
+    if mode == THEME_LIGHT:
+        palette = create_light_palette()
+    elif mode == THEME_SYSTEM:
+        palette = get_system_palette()
+    else:
+        palette = create_dark_palette()
+
+    app.setPalette(palette)
+
+
+def get_saved_theme(settings: QSettings | None = None) -> str:
+    """Retrieve the saved theme preference from application settings."""
+    if settings is None:
+        settings = QSettings("MemSentry", "MemSentry")
+    return str(settings.value("appearance/theme", THEME_DARK)).lower().strip()
+
+
+def save_theme(theme_mode: str, settings: QSettings | None = None) -> None:
+    """Persist the theme preference to application settings."""
+    if settings is None:
+        settings = QSettings("MemSentry", "MemSentry")
+    settings.setValue("appearance/theme", theme_mode.lower().strip())
+
+
+def apply_saved_theme(app: QApplication | None = None, settings: QSettings | None = None) -> str:
+    """Load and apply the saved theme preference at application launch."""
+    saved_theme = get_saved_theme(settings)
+    apply_theme(saved_theme, app)
+    return saved_theme
 
 
 def workspace_stylesheet() -> str:
-    dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128
+    dark = is_dark_theme()
     background, surface, text, muted, border, accent, selected = (
         ("#11151C", "#1B212B", "#E5E7EB", "#A5B0C0", "#303947", "#60A5FA", "#20334F")
         if dark else

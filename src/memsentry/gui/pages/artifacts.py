@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -30,6 +29,7 @@ from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
+from memsentry.gui.details_dialog import DetailsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -539,23 +539,26 @@ class ArtifactsPage(QScrollArea):
 
         _name, _details, source = _extract_artifact_summary(artifact)
 
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Artifact Details")
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setText(
-            f"Type: {artifact.artifact_type} | PID: {artifact.pid if artifact.pid is not None else 'N/A'} | Source: {source}"
+        dialog = DetailsDialog(
+            title="Artifact Details",
+            heading=artifact.artifact_type.replace("_", " ").title(),
+            fields=[
+                ("Artifact ID", str(artifact.id)),
+                ("PID", str(artifact.pid) if artifact.pid is not None else "N/A"),
+                ("Source", source),
+                ("Analysis run", str(artifact.analysis_run_id)),
+                ("Plugin run", str(artifact.plugin_run_id)),
+                ("Captured (UTC)", str(artifact.created_at)),
+            ],
+            details=(
+                f"Provenance Metadata:\n"
+                f"{json.dumps(artifact.provenance, indent=2)}\n\n"
+                f"Original Data:\n"
+                f"{json.dumps(artifact.original_data, indent=2)}"
+            ),
+            parent=self,
         )
-        detail_text = (
-            f"Artifact ID: {artifact.id}\n"
-            f"Type: {artifact.artifact_type}\n"
-            f"PID: {artifact.pid if artifact.pid is not None else 'N/A'}\n"
-            f"Analysis Run ID: {artifact.analysis_run_id}\n"
-            f"Plugin Run ID: {artifact.plugin_run_id}\n"
-            f"Captured (UTC): {artifact.created_at}\n\n"
-            f"Provenance Metadata:\n{json.dumps(artifact.provenance, indent=2)}\n\n"
-            f"Original Data:\n{json.dumps(artifact.original_data, indent=2)}"
-        )
-        dialog.setDetailedText(detail_text)
+
         dialog.exec()
 
     def _show_context_menu(self, pos: QPoint) -> None:

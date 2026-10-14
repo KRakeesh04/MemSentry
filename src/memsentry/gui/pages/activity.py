@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -29,6 +28,7 @@ from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.workflow_repository import WorkflowRepository
+from memsentry.gui.details_dialog import DetailsDialog
 
 logger = logging.getLogger(__name__)
 
@@ -535,23 +535,30 @@ class ActivityPage(QScrollArea):
         if not event:
             return
 
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Activity Event Details")
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setText(
-            f"Stage: {event.get('stage')} | Phase: {event.get('phase')} | Status: {event.get('status')}"
-        )
         detail_text = (
-            f"Event ID: {event.get('id')}\n"
-            f"Timestamp (UTC): {event.get('created_at')}\n"
-            f"Evidence ID: {event.get('evidence_id')}\n"
-            f"Analysis Run ID: {event.get('analysis_run_id') or 'N/A'}\n"
-            f"Progress: {event.get('progress')}%\n"
             f"Expected SHA-256: {event.get('expected_sha256') or 'N/A'}\n"
             f"Actual SHA-256:   {event.get('actual_sha256') or 'N/A'}\n\n"
             f"Message:\n{event.get('message') or 'No detailed message.'}"
         )
-        dialog.setDetailedText(detail_text)
+
+        dialog = DetailsDialog(
+            title="Activity Event Details",
+            heading=(
+                f"{str(event.get('stage') or 'Unknown').title()} · "
+                f"{str(event.get('phase') or 'Unknown').title()}"
+            ),
+            description=f"Status: {event.get('status') or 'N/A'}",
+            fields=[
+                ("Event ID", str(event.get("id") or "N/A")),
+                ("Timestamp (UTC)", str(event.get("created_at") or "N/A")),
+                ("Evidence ID", str(event.get("evidence_id") or "N/A")),
+                ("Analysis Run ID", str(event.get("analysis_run_id") or "N/A")),
+                ("Progress", f"{event.get('progress') or 0}%"),
+            ],
+            details=detail_text,
+            parent=self,
+        )
+
         dialog.exec()
 
     def _show_context_menu(self, pos: QPoint) -> None:

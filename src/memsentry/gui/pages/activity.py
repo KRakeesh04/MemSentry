@@ -252,7 +252,7 @@ class ActivityPage(QScrollArea):
         layout.addWidget(self.table)
 
         self.empty_state = QLabel(
-            "Open a case workspace\nto inspect its activity.",
+            "Open a case\nto inspect its activity.",
             self.table.viewport(),
         )
         self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -331,19 +331,33 @@ class ActivityPage(QScrollArea):
 
     def refresh(self) -> None:
         """Fetch workflow events from database and re-render layout."""
-        if not self.database:
+        if not self.database or self.case is None:
             self.all_events = []
             self.filtered_events = []
             self._render_events([])
-            self.empty_state.setText("Open a case workspace\nto inspect its activity.")
+            self.empty_state.setText("Open a case\nto inspect its activity.")
             self.empty_state.show()
             self.empty_state.raise_()
             self.message.setText("")
             return
 
         try:
-            repo = WorkflowRepository(self.database)
-            self.all_events = repo.list_events()
+            workflow_repo = WorkflowRepository(self.database)
+            evidence_repo = EvidenceRepository(self.database)
+
+            self.all_events = []
+
+            case_evidence = evidence_repo.list_by_case(self.case.id)
+
+            for evidence in case_evidence:
+                self.all_events.extend(
+                    workflow_repo.list_events(evidence_id=evidence.id)
+                )
+
+            self.all_events.sort(
+                key=lambda event: event.get("id", 0)
+            )
+
             self.message.setText("")
         except Exception as exc:
             logger.exception("Could not read workflow events from database")

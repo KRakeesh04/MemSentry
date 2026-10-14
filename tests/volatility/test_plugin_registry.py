@@ -39,7 +39,7 @@ def test_available_plugins_only_include_discovered_allowlisted_plugins() -> None
         "handles",
     ]
     assert [plugin.id for plugin in registry.unavailable_plugins("windows")] == [
-        "system_info"
+        "system_info", "process_scan", "threads", "memory_regions"
     ]
 
 

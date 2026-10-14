@@ -19,6 +19,7 @@ from memsentry.volatility.os_utils import normalise_os
 from memsentry.volatility.plugin_registry import PluginRegistry
 from memsentry.volatility.plugins.cmdline_parser import CmdlineParser
 from memsentry.volatility.plugins.dlllist_parser import DlllistParser
+from memsentry.volatility.plugins.evidence_parsers import PsScanParser, ThreadsParser, VadInfoParser
 from memsentry.volatility.plugins.handles_parser import HandlesParser
 from memsentry.volatility.plugins.info_parser import InfoParser
 from memsentry.volatility.plugins.malfind_parser import MalfindParser
@@ -55,6 +56,9 @@ class ParserSpec:
 
 # Map the registry's parser name to a parser instance and its artifact shape.
 PARSER_SPECS: dict[str, ParserSpec] = {
+    "psscan_parser": ParserSpec(PsScanParser(), "process", "processes"),
+    "threads_parser": ParserSpec(ThreadsParser(), "thread", "threads"),
+    "vadinfo_parser": ParserSpec(VadInfoParser(), "memory_region", "regions"),
     "pslist_parser": ParserSpec(PsListParser(), "process", "processes"),
     "pstree_parser": ParserSpec(PstreeParser(), "process_tree", "processes"),
     "cmdline_parser": ParserSpec(CmdlineParser(), "command_line", "command_lines"),

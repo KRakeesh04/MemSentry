@@ -11,6 +11,7 @@ runpy.run_path(str(root / "packaging" / "icons.py"))["create_icons"](
     root / "src" / "memsentry" / "gui" / "assets" / "shield.svg", icons)
 vol_data, vol_binaries, vol_imports = collect_all("volatility3")
 datas = vol_data + copy_metadata("memsentry") + [
+    ("version.txt", "."),
     (str(root / "src/memsentry/storage/schema"), "memsentry/storage/schema"),
     (str(root / "src/memsentry/gui/assets"), "memsentry/gui/assets"),
     (str(root / "resources"), "resources"),

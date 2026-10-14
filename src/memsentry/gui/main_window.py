@@ -128,6 +128,7 @@ class MainWindow(QMainWindow):
         self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (8, 9)))
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
+        self.cases_page.workspace_loaded.connect(self.overview_page.use_workspace)
         self.cases_page.case_opened.connect(self._open_case)
         self.overview_page.case_opened.connect(self._open_case)
         self.overview_page.cases_requested.connect(lambda: self.sidebar.setCurrentRow(0))
@@ -139,6 +140,10 @@ class MainWindow(QMainWindow):
         self.evidence_page.intake_progress.connect(self._intake_progress)
         self.evidence_page.intake_finished.connect(self.overview_page.finish_intake_progress)
         self.evidence_page.intake_failed.connect(self.overview_page.show_intake_failure)
+        if self.cases_page.loaded_workspace:
+            self.overview_page.use_workspace(
+                self.cases_page.loaded_workspace
+            )
         workspace_layout.addWidget(status)
         layout.addWidget(self.workspace, 1)
         self.settings_page.settings_changed.connect(self._apply_theme)

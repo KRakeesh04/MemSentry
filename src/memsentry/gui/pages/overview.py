@@ -175,6 +175,11 @@ class OverviewPage(QScrollArea):
         self.case = case
         self.refresh()
 
+    def use_workspace(self, workspace: str) -> None:
+        self.workspace_path = workspace
+        self.case = None
+        self.refresh()
+
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         narrow = self.viewport().width() < 800
@@ -183,9 +188,71 @@ class OverviewPage(QScrollArea):
         )
         self.recent_card.setMaximumWidth(16777215 if narrow else 320)
 
+    def _refresh_recent_cases(self) -> None:
+        clear_layout(self.recent_layout)
+
+        if not self.workspace_path:
+            self.recent_layout.addWidget(
+                label("No recent cases", "muted")
+            )
+            return
+
+        try:
+            database = workspace_database(self.workspace_path)
+
+            if not database.database_path.is_file():
+                self.recent_layout.addWidget(
+                    label("No recent cases", "muted")
+                )
+                return
+
+            recent_cases = CaseRepository(database).list_all()[:5]
+
+            if not recent_cases:
+                self.recent_layout.addWidget(
+                    label("No recent cases", "muted")
+                )
+                return
+
+            for recent in recent_cases:
+                short_number = recent.case_number
+
+                if len(short_number) > 18:
+                    short_number = short_number[:18] + "…"
+
+                button = ChoiceCard(
+                    recent.name,
+                    f"{short_number} · {recent.status.title()}",
+                )
+
+                button.setChecked(
+                    self.case is not None and recent.id == self.case.id
+                )
+
+                button.setToolTip(
+                    f"{recent.name}\n"
+                    f"{recent.case_number}\n"
+                    f"Status: {recent.status.title()}"
+                )
+
+                button.clicked.connect(
+                    lambda checked=False, item=recent: self.case_opened.emit(
+                        self.workspace_path,
+                        item,
+                    )
+                )
+
+                self.recent_layout.addWidget(button)
+
+        except Exception:
+            self.recent_layout.addWidget(
+                label("Could not load recent cases", "muted")
+            )
+
     def refresh(self) -> None:
         self._intake_active = False
         self._intake_error = None
+        self._refresh_recent_cases()
         if self.case is None:
             return
         self.error.clear()
@@ -214,35 +281,11 @@ class OverviewPage(QScrollArea):
                 self.evidence_choice.setCurrentIndex(0)
             self.evidence_choice.blockSignals(False)
             self._evidence_changed()
-            clear_layout(self.recent_layout)
-            for recent in CaseRepository(self.database).list_all()[:4]:
-                short_number = recent.case_number
-
-                if len(short_number) > 18:
-                    short_number = short_number[:18] + "…"
-
-                button = ChoiceCard(
-                    recent.name,
-                    f"{short_number} · {recent.status.title()}",
-                )
-                button.setChecked(recent.id == case.id)
-                button.setToolTip(
-                    f"{recent.name}\n"
-                    f"{recent.case_number}\n"
-                    f"Status: {recent.status.title()}"
-                )
-                button.clicked.connect(
-                    lambda checked=False, item=recent: self.case_opened.emit(
-                        self.workspace_path, item
-                    )
-                )
-                self.recent_layout.addWidget(button)
             self.import_button.setEnabled(case.status == "open")
         except Exception as exc:
             self.evidence_choice.blockSignals(False)
             self.error.setText(f"Could not load overview: {exc}")
             self.evidence_choice.clear()
-            clear_layout(self.recent_layout)
 
     def _show_evidence_details(self) -> None:
         evidence = self.evidence_choice.currentData()

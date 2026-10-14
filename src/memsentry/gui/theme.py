@@ -295,10 +295,10 @@ def workspace_stylesheet() -> str:
 
             padding: 0px;
 
-            background-color: #182230;
-            color: #CBD5E1;
+            background-color: {"#182230" if dark else "#FFFFFF"};
+            color: {"#CBD5E1" if dark else "#334155"};
 
-            border: 1px solid #334155;
+            border: 1px solid {"#334155" if dark else "#CBD5E1"};
             border-radius: 6px;
 
             font-size: 14px;
@@ -306,21 +306,21 @@ def workspace_stylesheet() -> str:
         }}
 
         #workspace QPushButton#graphControlButton:hover {{
-            background-color: #223043;
-            color: #FFFFFF;
-            border-color: #475569;
+            background-color: {"#223043" if dark else "#F1F5F9"};
+            color: {"#FFFFFF" if dark else "#0F172A"};
+            border-color: {"#475569" if dark else "#94A3B8"};
         }}
 
         #workspace QPushButton#graphControlButton:pressed {{
-            background-color: #0F172A;
-            color: #FFFFFF;
+            background-color: {"#0F172A" if dark else "#E2E8F0"};
+            color: {"#FFFFFF" if dark else "#0F172A"};
             border-color: #3B82F6;
         }}
 
         #workspace QPushButton#graphControlButton:disabled {{
-            background-color: #111827;
-            color: #64748B;
-            border-color: #253244;
+            background-color: {"#111827" if dark else "#F8FAFC"};
+            color: {"#64748B" if dark else "#94A3B8"};
+            border-color: {"#253244" if dark else "#E2E8F0"};
         }}
 
 
@@ -333,10 +333,10 @@ def workspace_stylesheet() -> str:
 
             padding: 0px 6px;
 
-            background-color: #182230;
-            color: #CBD5E1;
+            background-color: {"#182230" if dark else "#FFFFFF"};
+            color: {"#CBD5E1" if dark else "#334155"};
 
-            border: 1px solid #334155;
+            border: 1px solid {"#334155" if dark else "#CBD5E1"};
             border-radius: 6px;
 
             font-size: 12px;
@@ -344,21 +344,21 @@ def workspace_stylesheet() -> str:
         }}
 
         #workspace QPushButton#graphFitButton:hover {{
-            background-color: #223043;
-            color: #FFFFFF;
-            border-color: #475569;
+            background-color: {"#223043" if dark else "#F1F5F9"};
+            color: {"#FFFFFF" if dark else "#0F172A"};
+            border-color: {"#475569" if dark else "#94A3B8"};
         }}
 
         #workspace QPushButton#graphFitButton:pressed {{
-            background-color: #0F172A;
-            color: #FFFFFF;
+            background-color: {"#0F172A" if dark else "#E2E8F0"};
+            color: {"#FFFFFF" if dark else "#0F172A"};
             border-color: #3B82F6;
         }}
 
         #workspace QPushButton#graphFitButton:disabled {{
-            background-color: #111827;
-            color: #64748B;
-            border-color: #253244;
+            background-color: {"#111827" if dark else "#F8FAFC"};
+            color: {"#64748B" if dark else "#94A3B8"};
+            border-color: {"#253244" if dark else "#E2E8F0"};
         }}
 
         #workspace QMessageBox {{
@@ -379,6 +379,11 @@ def workspace_stylesheet() -> str:
 
         #workspace QMessageBox QPushButton {{
             min-width: 90px;
+        }}
+
+        #workspace QGraphicsView#investigationGraphCanvas {{
+            background-color: {"#111821" if dark else "#F9FAFB"};
+            border: none;
         }}
 
     """

@@ -30,7 +30,7 @@ def test_exports_only_filtered_events_in_table_order(qtbot, tmp_path, monkeypatc
     monkeypatch.setattr("memsentry.gui.pages.activity.QFileDialog.getSaveFileName",
                         lambda *args: (str(tmp_path / "filtered"), ""))
     page.export_button.click()
-    lines = (tmp_path / "filtered.log").read_text().splitlines()
+    lines = (tmp_path / "filtered.log").read_text(encoding="utf-8").splitlines()
     header = json.loads(lines[1][2:])
     assert header["event_count"] == 3
     assert header["filters"]["status"] == "Failed"

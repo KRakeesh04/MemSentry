@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="MemSentry"
+    Language="1033"
+    Version="$(var.ProductVersion)"
+    Manufacturer="MemSentry contributors"
+    UpgradeCode="9C542013-65F3-42E4-A6DD-C17E6D489C0C">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perMachine" Platform="x64" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of MemSentry is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="MemSentryIcon" SourceFile="$(var.IconPath)" />
+    <Property Id="ARPPRODUCTICON" Value="MemSentryIcon" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLFOLDER" Name="MemSentry" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="MemSentry" />
+      </Directory>
+    </Directory>
+
+    <Feature Id="ProductFeature" Title="MemSentry" Level="1">
+      <ComponentGroupRef Id="MemSentryFiles" />
+      <ComponentRef Id="ApplicationShortcut" />
+    </Feature>
+
+    <Component Id="ApplicationShortcut" Directory="ApplicationProgramsFolder" Guid="*">
+      <Shortcut
+        Id="ApplicationStartMenuShortcut"
+        Name="MemSentry"
+        Description="Memory forensics investigation"
+        Target="[INSTALLFOLDER]MemSentry.exe"
+        WorkingDirectory="INSTALLFOLDER"
+        Icon="MemSentryIcon"
+        IconIndex="0" />
+      <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
+      <RegistryValue
+        Root="HKLM"
+        Key="Software\MemSentry"
+        Name="installed"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
+
+    <UIRef Id="WixUI_InstallDir" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+  </Product>
+</Wix>

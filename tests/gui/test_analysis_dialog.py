@@ -93,10 +93,18 @@ def test_main_window_keeps_job_alive_and_blocks_close(qtbot, tmp_path, monkeypat
     try:
         window._start_analysis()
         assert window.analysis_worker is not None
+        assert not window.running_banner.isHidden()
+        assert "Test · TEST" in window.running_case_label.text()
+        window.sidebar.setCurrentRow(0)
+        assert not window.running_banner.isHidden()
+        window.running_case_button.click()
+        assert window.pages.currentIndex() == 1
+        assert window.overview_page.evidence_choice.currentData().id == result.evidence.id
         assert not window.evidence_page.start.isEnabled()
         assert not window.close()
     finally:
         release.set()
         qtbot.waitUntil(lambda: window.analysis_worker is None)
     assert window.evidence_page.start.isEnabled()
+    assert window.running_banner.isHidden()
     assert "completed" in window.job_status.text()

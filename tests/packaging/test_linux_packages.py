@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ def test_debian_architecture_names() -> None:
         debian_architecture("i686")
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="DEB packaging requires dpkg-deb on Linux.")
 def test_debian_package_contains_bundle_launcher_and_desktop_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -85,7 +88,8 @@ def test_appimage_stages_complete_bundle_and_launcher(
     package = build_appimage(bundle, "0.1.0", tmp_path / "release", tool, "x86_64")
 
     assert package.is_file()
-    assert package.stat().st_mode & 0o111
+    if os.name == "posix":
+        assert package.stat().st_mode & 0o111
     assert observed["check"] is True
     assert observed["architecture"] == "x86_64"
     assert "usr/lib/memsentry/MemSentry" in str(observed["launcher"])

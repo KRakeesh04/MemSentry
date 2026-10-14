@@ -40,7 +40,7 @@ $filesObject = Join-Path $buildDirectory 'MemSentryFiles.wixobj'
 $msi = Join-Path $assetsDirectory "MemSentry-$Version-windows-x86_64.msi"
 
 & (Join-Path $wixBin 'heat.exe') dir $bundle `
-    -cg MemSentryFiles -dr INSTALLFOLDER -gg -sfrag -srd `
+    -cg MemSentryFiles -dr INSTALLFOLDER -gg -sfrag -srd -sreg `
     -var var.SourceDir -out $harvest
 if ($LASTEXITCODE -ne 0) { throw 'WiX heat failed while harvesting the app bundle.' }
 

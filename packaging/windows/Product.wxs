@@ -40,7 +40,7 @@
         IconIndex="0" />
       <RemoveFolder Id="RemoveApplicationProgramsFolder" On="uninstall" />
       <RegistryValue
-        Root="HKLM"
+        Root="HKCU"
         Key="Software\MemSentry"
         Name="installed"
         Type="integer"

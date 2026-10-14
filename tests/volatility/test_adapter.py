@@ -87,7 +87,7 @@ def test_load_symbols_returns_symbol_path_when_available(tmp_path: Path) -> None
 
 def test_load_symbols_returns_directory_path_when_empty(tmp_path: Path) -> None:
     # load_symbols returns the OS symbol directory even when no files are present;
-    # an UnsatisfiedRequirementException from Volatility is the actual error path.
+    # an UnsatisfiedException from Volatility is the actual error path.
     adapter = _adapter(tmp_path, with_symbols=False)
     path = adapter.load_symbols("windows")
     assert path.is_dir()
@@ -192,6 +192,31 @@ def test_render_json_outputs_valid_list(tmp_path: Path, monkeypatch) -> None:
 
     output = VolatilityAdapter._render_json(object())
     assert json.loads(output) == [{"PID": 1}]
+
+
+def test_unmet_requirements_are_preserved(tmp_path, monkeypatch):
+    from volatility3.framework import exceptions
+    from volatility3.framework.configuration import requirements
+
+    import memsentry.volatility.adapter as adapter_module
+    from memsentry.volatility.adapter import VolatilitySymbolError
+
+    adapter = _adapter(tmp_path)
+    adapter.initialize("windows")
+    evidence = tmp_path / "synthetic.img"
+    evidence.write_bytes(b"synthetic")
+    original = exceptions.UnsatisfiedException({
+        "plugins.Info.kernel.symbol_table_name": requirements.StringRequirement(
+            name="symbol_table_name", description="Kernel symbols")})
+
+    def fail(*args, **kwargs):
+        raise original
+
+    monkeypatch.setattr(adapter, "_prepare_automagics", lambda *_: [])
+    monkeypatch.setattr(adapter_module.plugins, "construct_plugin", fail)
+    with pytest.raises(VolatilitySymbolError, match=r"kernel\.symbol_table_name: Kernel symbols") as error:
+        adapter.run_plugin("windows.info.Info", str(evidence))
+    assert error.value.__cause__ is original
 
 
 def test_symbol_manager_symbols_used_by_lists_windows_tables(tmp_path: Path) -> None:

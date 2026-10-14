@@ -236,8 +236,6 @@ class MainWindow(QMainWindow):
         self.analysis_timer.stop()
         self.job_status.setText(f"Analysis {run.status} · {run.id}")
         self.overview_page.refresh()
-        if run.error_message:
-            self.overview_page.error.setText(run.error_message)
 
     def _analysis_failed(self, message: str) -> None:
         self.analysis_timer.stop()

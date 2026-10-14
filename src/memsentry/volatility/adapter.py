@@ -149,9 +149,15 @@ class VolatilityAdapter:
             )
             grid = constructed.run()
             raw_output = self._render_json(grid)
-        except exceptions.UnsatisfiedRequirementException as error:
+        except exceptions.UnsatisfiedException as error:
+            unmet = "; ".join(
+                f"{name}: {requirement.description}"
+                for name, requirement in error.unsatisfied.items()
+            )
             raise VolatilitySymbolError(
-                f"Volatility 3 could not resolve required symbols for '{evidence}': {error}"
+                "Volatility could not satisfy the plugin requirements. "
+                "Check the image OS and matching symbols; the memory layer may also be unavailable. "
+                f"Unmet requirements: {unmet or 'Not reported'}"
             ) from error
         except exceptions.VolatilityException as error:
             raise VolatilityPluginError(

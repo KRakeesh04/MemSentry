@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -38,6 +39,33 @@ def label(text: str, style: str = "") -> QLabel:
     widget.setObjectName(style)
     widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     return widget
+
+
+def analysis_error_summary(message: str) -> str:
+    summaries = []
+    for line in message.splitlines():
+        if not line.strip():
+            continue
+        if "has no attribute 'UnsatisfiedRequirementException'" in line:
+            summary = (
+                "An application error hid the reason these checks failed. "
+                "This error handler has been corrected; restart the updated app and retry analysis "
+                "using the existing image. This saved run will keep its original error details."
+            )
+        elif "Unmet requirements:" in line:
+            summary = (
+                "Volatility could not prepare a check. Confirm the image OS and symbols match "
+                "the captured system. A required memory layer may also be unavailable. "
+                "Open technical details to see which requirements are missing."
+            )
+        else:
+            summary = (
+                "One or more analysis steps failed. Open technical details for the recorded "
+                "reason, or review Activity for the affected steps."
+            )
+        if summary not in summaries:
+            summaries.append(summary)
+    return "\n\n".join(summaries)
 
 
 def clear_layout(layout: QLayout) -> None:
@@ -141,6 +169,18 @@ class OverviewPage(QScrollArea):
         main.addWidget(self.run_choice)
         self.run_status = label("No recorded analysis", "muted")
         main.addWidget(self.run_status)
+        self.error_details_toggle = QPushButton("Show technical details")
+        self.error_details_toggle.setCheckable(True)
+        self.error_details_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.error_details_toggle.toggled.connect(self._toggle_error_details)
+        self.error_details_toggle.hide()
+        main.addWidget(self.error_details_toggle)
+        self.error_details = QPlainTextEdit()
+        self.error_details.setReadOnly(True)
+        self.error_details.setAccessibleName("Recorded analysis error details")
+        self.error_details.setMaximumHeight(180)
+        self.error_details.hide()
+        main.addWidget(self.error_details)
         main.addStretch()
         main_widget = QWidget()
         main_widget.setLayout(main)
@@ -349,7 +389,16 @@ class OverviewPage(QScrollArea):
         self.run_choice.blockSignals(False)
         self._run_changed()
 
+    def _toggle_error_details(self, expanded: bool) -> None:
+        self.error_details.setVisible(expanded)
+        self.error_details_toggle.setText(
+            "Hide technical details" if expanded else "Show technical details")
+
     def _run_changed(self) -> None:
+        self.error_details_toggle.setChecked(False)
+        self.error_details_toggle.hide()
+        self.error_details.hide()
+        self.error_details.clear()
         clear_layout(self.findings_layout)
         run = self.run_choice.currentData()
         findings = []
@@ -357,12 +406,14 @@ class OverviewPage(QScrollArea):
         self.run_status.setText("No recorded analysis — absence of findings does not mean clean.")
         if run is not None:
             self.run_status.setText(
-                f"Run: {str(run.id)[:8]}  ·  Status: {run.status.title()}"
+                f"Run: {str(run.id)[:8]}  ·  Status: {run.status.replace('_', ' ').capitalize()}"
             )
             if run.error_message:
                 self.run_status.setText(
-                    f"{self.run_status.text()}\n{run.error_message}"
+                    f"{self.run_status.text()}\n\n{analysis_error_summary(run.error_message)}"
                 )
+                self.error_details.setPlainText(run.error_message)
+                self.error_details_toggle.show()
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")

@@ -228,11 +228,11 @@ def workspace_stylesheet() -> str:
             background: {surface}; color: {muted};
         }}
         #workspace QTableWidget:focus {{ border: 1px solid {accent}; }}
-        #workspace QLineEdit, #workspace QComboBox, #workspace QTextEdit {{
+        #workspace QLineEdit, #workspace QComboBox, #workspace QTextEdit, #workspace QPlainTextEdit {{
             background: {surface}; color: {text}; border: 1px solid {border};
             border-radius: 6px; padding: 10px; selection-background-color: {selected};
         }}
-        #workspace QLineEdit:focus, #workspace QTextEdit:focus {{ border-color: {accent}; }}
+        #workspace QLineEdit:focus, #workspace QTextEdit:focus, #workspace QPlainTextEdit:focus {{ border-color: {accent}; }}
         #workspace QComboBox {{ combobox-popup: 0; }}
         #workspace QComboBox:focus {{ border-color: {accent}; }}
         #workspace QComboBox QAbstractItemView {{

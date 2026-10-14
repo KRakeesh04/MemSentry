@@ -239,6 +239,8 @@ def require_platform(expected: str, tool_name: str) -> None:
 
 def _sha256(path: Path, progress_callback: ProgressCallback | None = None) -> str:
     digest = hashlib.sha256()
+    if progress_callback is not None:
+        progress_callback(0, None)
     with path.open("rb") as evidence_file:
         for chunk in iter(lambda: evidence_file.read(1024 * 1024), b""):
             digest.update(chunk)

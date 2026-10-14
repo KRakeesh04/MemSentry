@@ -74,6 +74,38 @@ def test_settings_page_theme_switch_and_save(qtbot, qapp, tmp_path, monkeypatch)
     assert ini_settings.value("appearance/theme") == THEME_DARK
 
 
+def test_settings_page_reporting_defaults_and_save(qtbot, tmp_path, monkeypatch):
+    settings_file = str(tmp_path / "reporting_settings.ini")
+    monkeypatch.setattr(
+        "memsentry.gui.pages.settings.QSettings",
+        lambda *_: QSettings(settings_file, QSettings.Format.IniFormat),
+    )
+
+    page = SettingsPage()
+    qtbot.addWidget(page)
+
+    assert page.report_format_choice.count() == 3
+    both_idx = page.report_format_choice.findData("both")
+    assert both_idx >= 0
+
+    page.report_format_choice.setCurrentIndex(both_idx)
+    target_dir = str(tmp_path / "default_reports")
+    page.report_output_input.setText(target_dir)
+
+    page.save_button.click()
+    assert "saved successfully" in page.status_message.text()
+
+    ini_settings = QSettings(settings_file, QSettings.Format.IniFormat)
+    assert ini_settings.value("reporting/format") == "both"
+    assert ini_settings.value("reporting/output_directory") == target_dir
+
+    # Verify reloading
+    reloaded_page = SettingsPage()
+    qtbot.addWidget(reloaded_page)
+    assert reloaded_page.report_format_choice.currentData() == "both"
+    assert reloaded_page.report_output_input.text() == target_dir
+
+
 def test_help_page_renders_diagnostics(qtbot):
     page = HelpPage()
     qtbot.addWidget(page)

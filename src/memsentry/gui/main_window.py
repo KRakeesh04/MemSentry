@@ -142,6 +142,7 @@ class MainWindow(QMainWindow):
         workspace_layout.addWidget(status)
         layout.addWidget(self.workspace, 1)
         self.settings_page.settings_changed.connect(self._apply_theme)
+        self.settings_page.settings_changed.connect(self.reports_page.refresh)
         app = QApplication.instance()
         assert isinstance(app, QApplication)
         app.paletteChanged.connect(self._apply_theme)
@@ -268,6 +269,8 @@ class MainWindow(QMainWindow):
             self.findings_page.refresh()
         elif index == 5:  # Investigation Graph page index
             self.graph_page.refresh()
+        elif index == 6:  # Reports page index
+            self.reports_page.refresh()
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
 

@@ -112,7 +112,37 @@ class SettingsPage(QScrollArea):
         ws_box.addLayout(ws_form)
         layout.addWidget(ws_card)
 
-        # Section 2: Forensic Symbols & Volatility
+        # Section 3: Reporting
+        rpt_card, rpt_box = self._create_card("Reporting")
+        rpt_desc = QLabel(
+            "Configure default report formats and default destination directory for case reports."
+        )
+        rpt_desc.setObjectName("muted")
+        rpt_desc.setWordWrap(True)
+        rpt_box.addWidget(rpt_desc)
+
+        rpt_form = QFormLayout()
+        rpt_form.setSpacing(12)
+
+        self.report_format_choice = ThemedComboBox()
+        self.report_format_choice.addItem("Both (HTML & JSON)", "both")
+        self.report_format_choice.addItem("HTML (Readable report)", "html")
+        self.report_format_choice.addItem("JSON (Structured results)", "json")
+        rpt_form.addRow("Default Format", self.report_format_choice)
+
+        self.report_output_input = QLineEdit()
+        self.report_output_input.setPlaceholderText("Select default directory for generated reports...")
+        rpt_row = QHBoxLayout()
+        rpt_row.addWidget(self.report_output_input)
+        rpt_browse = QPushButton("Browse…")
+        rpt_browse.clicked.connect(self._browse_report_output)
+        rpt_row.addWidget(rpt_browse)
+        rpt_form.addRow("Default Output Path", rpt_row)
+
+        rpt_box.addLayout(rpt_form)
+        layout.addWidget(rpt_card)
+
+        # Section 4: Forensic Symbols & Volatility
         sym_card, sym_box = self._create_card("Volatility 3 & Symbol Tables")
         sym_form = QFormLayout()
         sym_form.setSpacing(12)
@@ -198,6 +228,16 @@ class SettingsPage(QScrollArea):
         symbols_path = os.environ.get("MEMSENTRY_SYMBOLS", "")
         self.symbols_input.setText(symbols_path)
 
+        rpt_format = str(qsettings.value("reporting/format", "both")).lower().strip()
+        idx = self.report_format_choice.findData(rpt_format)
+        if idx >= 0:
+            self.report_format_choice.setCurrentIndex(idx)
+        else:
+            self.report_format_choice.setCurrentIndex(0)
+
+        rpt_output = str(qsettings.value("reporting/output_directory", ""))
+        self.report_output_input.setText(rpt_output)
+
         # Refresh acquisition tools list
         while self.tools_layout.count():
             item = self.tools_layout.takeAt(0)
@@ -228,6 +268,12 @@ class SettingsPage(QScrollArea):
         save_theme(theme_mode, qsettings)
         apply_theme(theme_mode)
 
+        rpt_format = self.report_format_choice.currentData() or "both"
+        qsettings.setValue("reporting/format", rpt_format)
+
+        rpt_output = self.report_output_input.text().strip()
+        qsettings.setValue("reporting/output_directory", rpt_output)
+
         symbols_path = self.symbols_input.text().strip()
         if symbols_path:
             os.environ["MEMSENTRY_SYMBOLS"] = symbols_path
@@ -250,6 +296,13 @@ class SettingsPage(QScrollArea):
         )
         if path:
             self.workspace_input.setText(path)
+
+    def _browse_report_output(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Select Default Report Output Folder", self.report_output_input.text()
+        )
+        if path:
+            self.report_output_input.setText(path)
 
     def _browse_symbols(self) -> None:
         path = QFileDialog.getExistingDirectory(

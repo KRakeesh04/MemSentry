@@ -4,7 +4,8 @@ import importlib.util
 import os
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QThread, Signal
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QDialog,
@@ -23,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.analysis_job import AnalysisRequest, run_analysis
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.gui.cursors import InteractiveCursors
 from memsentry.models.evidence import Evidence
 from memsentry.volatility.plugin_registry import PluginRegistry
 from memsentry.volatility.plugin_runner import PARSER_SPECS
@@ -107,6 +109,8 @@ class AnalysisDialog(QDialog):
         layout.addWidget(hint)
         self.plugins = QListWidget()
         self.plugins.setAccessibleName("Available analysis plugins")
+        self.plugins.setMouseTracking(True)
+        self.plugins.viewport().installEventFilter(self)
         layout.addWidget(self.plugins, 1)
         self.yara = QCheckBox("Run YARA using the selected rules")
         layout.addWidget(self.yara)
@@ -151,7 +155,23 @@ class AnalysisDialog(QDialog):
         self.catalog = CatalogWorker(self)
         self.catalog.ready.connect(self._catalog_ready)
         self.catalog.failed.connect(self.message.setText)
+        self._interactive_cursors = InteractiveCursors(self)
         self.catalog.start()
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self.plugins.viewport():
+            if isinstance(event, QMouseEvent) and event.type() == QEvent.Type.MouseMove:
+                item = self.plugins.itemAt(event.position().toPoint())
+                actionable = (
+                    self.plugins.isEnabled() and item is not None
+                    and bool(item.flags() & Qt.ItemFlag.ItemIsEnabled)
+                    and bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable)
+                )
+                self.plugins.viewport().setCursor(
+                    Qt.CursorShape.PointingHandCursor if actionable else Qt.CursorShape.ArrowCursor)
+            elif event.type() in (QEvent.Type.Leave, QEvent.Type.EnabledChange):
+                self.plugins.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+        return super().eventFilter(watched, event)
 
     def _catalog_ready(self, registry: PluginRegistry) -> None:
         self.registry = registry

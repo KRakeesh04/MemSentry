@@ -2,7 +2,7 @@ from threading import Event
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QPushButton
+from PySide6.QtWidgets import QLabel, QPushButton
 
 from memsentry.app.case_service import create_case, generate_case_number, workspace_database
 from memsentry.app.intake_service import IntakeRequest, IntakeService
@@ -163,10 +163,19 @@ def test_overview_scopes_findings_and_shows_saved_integrity(qtbot, tmp_path):
     assert "Synthetic plugin failure" in page.run_status.text()
     assert "No findings" in page.findings_layout.itemAt(0).widget().text()
     page.run_choice.setCurrentIndex(1)
-    finding_button = page.findings_layout.itemAt(0).widget()
-    assert isinstance(finding_button, QPushButton)
-    assert "Synthetic finding" in finding_button.title_label.text()
-    assert "80%" in finding_button.description_label.text()
+    findings_summary = page.findings_layout.itemAt(0).widget()
+    assert any(
+        "Total findings: 1" in item.text()
+        for item in findings_summary.findChildren(QLabel)
+    )
+    assert any(
+        "High: 1" in item.text()
+        for item in findings_summary.findChildren(QLabel)
+    )
+    assert any(
+        button.text() == "View findings"
+        for button in findings_summary.findChildren(QPushButton)
+    )
     EvidenceRepository(database).update_integrity_status(
         result.evidence.id, IntegrityStatus.MODIFIED
     )

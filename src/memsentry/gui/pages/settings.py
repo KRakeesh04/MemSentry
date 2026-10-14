@@ -241,8 +241,9 @@ class SettingsPage(QScrollArea):
         # Refresh acquisition tools list
         while self.tools_layout.count():
             item = self.tools_layout.takeAt(0)
-            if item and item.widget():
-                item.widget().deleteLater()
+            widget = item.widget() if item else None
+            if widget is not None:
+                widget.deleteLater()
 
         for tool in available_tools():
             row = QFrame()

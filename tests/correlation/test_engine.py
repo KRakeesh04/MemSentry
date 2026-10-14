@@ -106,6 +106,8 @@ def test_correlation_rule_ms_r001_executable_private_memory() -> None:
     ]
     assert len(executable_memory_findings) == 1
     assert "executable" in executable_memory_findings[0].title.lower()
+    assert ". Process:" in executable_memory_findings[0].description
+    assert ".. Process:" not in executable_memory_findings[0].description
 
 
 def test_correlation_rule_ms_r002_memory_with_network() -> None:

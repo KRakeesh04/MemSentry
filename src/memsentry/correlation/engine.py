@@ -394,7 +394,7 @@ class CorrelationEngine:
                 analysis_run_id=analysis_run_id,
                 rule_id=rule.rule_id,
                 title=rule.title,
-                description=f"{rule.description}. Process: {context.process_name} (PID: {context.pid}). {', '.join(details)}",
+                description=f"{rule.description.rstrip().rstrip('.')}. Process: {context.process_name} (PID: {context.pid}). {', '.join(details)}",
                 severity=rule.severity,
                 confidence=score,
             )

@@ -23,13 +23,13 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.gui.details_dialog import DetailsDialog
 from memsentry.models.artifact import Artifact
 from memsentry.models.case import Case
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
-from memsentry.gui.details_dialog import DetailsDialog
 
 logger = logging.getLogger(__name__)
 

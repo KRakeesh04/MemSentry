@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Signal, Qt
+from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -13,16 +13,21 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
-    QMessageBox,
 )
 
-from memsentry.app.case_service import create_case, generate_case_number, workspace_database, update_case_status
+from memsentry.app.case_service import (
+    create_case,
+    generate_case_number,
+    update_case_status,
+    workspace_database,
+)
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.models.case import Case, CaseStatus
 from memsentry.storage.repositories.case_repository import CaseRepository
@@ -175,7 +180,7 @@ class CasesPage(QScrollArea):
         self.workspace.textChanged.connect(self._update_create_button)
         self.name.textChanged.connect(self._update_create_button)
         self.number.textChanged.connect(self._update_create_button)
-        
+
         form.addRow("Case number", self.number)
         form.addRow("Case name *", self.name)
         form.addRow("Description", self.description)
@@ -257,12 +262,12 @@ class CasesPage(QScrollArea):
                     case.case_number,
                     case.status.title(),
                     case.created_at.strftime("%Y-%m-%d %H:%M"),
-                )                
+                )
             ):
                 item = QTableWidgetItem(value)
                 item.setToolTip(value)
 
-                if column in (1, 2):  
+                if column in (1, 2):
                     item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
 
                 self.table.setItem(row, column, item)
@@ -348,15 +353,12 @@ class CasesPage(QScrollArea):
 
         if status == CaseStatus.CLOSED:
             action = "close"
-            target = "Closed"
 
         elif status == CaseStatus.ARCHIVED:
             action = "archive"
-            target = "Archived"
 
         else:
             action = "reopen"
-            target = "Open"
 
         if status == CaseStatus.ARCHIVED:
             message = (
@@ -414,7 +416,13 @@ class CasesPage(QScrollArea):
                 self.description.text(),
             )
         except Exception as exc:
-            self.create_error.setText(f"Could not create case: {exc}")
+            message = str(exc)
+            if "UNIQUE constraint failed: cases.case_number" in message:
+                message = f"Case number '{self.number.text().strip()}' already exists."
+            else:
+                message = f"Could not create case: {message}"
+            self.create_error.setText(message)
+            self.message.setText(message)
             return
         self.create_error.clear()
         self.refresh()

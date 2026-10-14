@@ -116,6 +116,16 @@ MEMSENTRY_WINPMEM=tools/winpmem_mini_x64.exe
 
 Packaged startup loads this file automatically; tool paths are relative to it. Existing environment variables take precedence. In development, set `MEMSENTRY_ENV_FILE` to the `.env` path or use **Load .env** in the evidence page. Live capture requires OS elevation and remains a stretch feature. No `portable.mode` marker is used.
 
+## Installers
+
+Tagged GitHub releases include native x86-64 packages built on their target OS:
+
+- **Windows:** run `MemSentry-<version>-windows-x86_64.msi` and follow the setup prompts. The installer adds a Start menu shortcut and can be removed from Windows Installed Apps. Administrator permission is required for the per-machine install.
+- **Debian/Ubuntu:** install `memsentry_<version>_amd64.deb` with `sudo apt install ./memsentry_<version>_amd64.deb`. Launch **MemSentry** from the application menu or run `memsentry`.
+- **Other Linux distributions:** mark `MemSentry-<version>-linux-x86_64.AppImage` executable with `chmod +x` and launch it. Some distributions require FUSE support for AppImages.
+
+Linux packages are built on Ubuntu 22.04 x86-64. AppImages still depend on compatible host graphics/system libraries, and target-machine validation is recommended. Installers do not include memory images, Volatility symbol files, or optional acquisition tools. Release builds retain the portable ZIP/tar archive and Python source distributions. The Windows MSI and Linux installers are produced by the tag-triggered [release workflow](.github/workflows/release.yml); builds are platform-specific.
+
 ## Planned work
 
 - Integrate correlation and explainable process scoring into the desktop workflow.

@@ -12,7 +12,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -116,6 +115,8 @@ class OverviewPage(QScrollArea):
         evidence_layout.addWidget(self.evidence_choice)
         self.integrity = label("No evidence registered", "muted")
         evidence_layout.addWidget(self.integrity)
+        self.hash = label("SHA-256: unavailable", "muted")
+        evidence_layout.addWidget(self.hash)
         self.details = label("Add a memory image to begin.")
         evidence_layout.addWidget(self.details)
         self.evidence_details_button = QPushButton("View evidence details")
@@ -271,6 +272,7 @@ class OverviewPage(QScrollArea):
         self.integrity.setObjectName("muted")
         if evidence is None:
             self.integrity.setText("No evidence registered")
+            self.hash.setText("SHA-256: unavailable")
             self.details.setText("Add a memory image to begin.")
             self.evidence_details_button.setEnabled(False)
         else:
@@ -280,12 +282,13 @@ class OverviewPage(QScrollArea):
             self.integrity.setText(
                 f"{'✓' if verified else '!'} SHA-256 · Last recorded: {evidence.integrity_status}"
             )
+            self.hash.setText(f"SHA-256: {evidence.sha256}")
             self.details.setText(
                 f"OS: {evidence.evidence_os or 'Not identified'}  ·  "
                 f"Image size: {evidence.file_size_bytes / 1024**3:.2f} GiB\n"
                 f"Registered: {evidence.registered_at:%Y-%m-%d %H:%M} UTC"
             )
-            
+
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")
@@ -313,6 +316,10 @@ class OverviewPage(QScrollArea):
             self.run_status.setText(
                 f"Run: {str(run.id)[:8]}  ·  Status: {run.status.title()}"
             )
+            if run.error_message:
+                self.run_status.setText(
+                    f"{self.run_status.text()}\n{run.error_message}"
+                )
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")

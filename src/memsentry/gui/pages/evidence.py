@@ -4,7 +4,7 @@ import platform
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QObject, QSettings, QThread, Signal, Qt
+from PySide6.QtCore import QObject, QSettings, QThread, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -14,13 +14,14 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSpacerItem,
     QVBoxLayout,
     QWidget,
-    QSpacerItem, 
-    QSizePolicy
 )
 
 from memsentry.acquisition.config import load_environment_file
@@ -244,7 +245,7 @@ class EvidencePage(QScrollArea):
             self.profile.setParent(self.live_fields)
             self.profile.hide()
         self.authorized = QCheckBox("I am authorized to capture memory on this host.")
-        
+
         form_layout.addWidget(self.live_fields)
 
         self.case_section = QWidget()
@@ -320,22 +321,11 @@ class EvidencePage(QScrollArea):
         result_layout.setContentsMargins(16, 12, 16, 12)
         result_layout.setSpacing(6)
 
-        self.result_title = QLabel()
-        self.result_title.setObjectName("successTitle")
-
-        self.result_summary = QLabel()
-        self.result_summary.setWordWrap(True)
-
-        self.result_hash = QLabel()
-        self.result_hash.setObjectName("muted")
-        self.result_hash.setWordWrap(True)
-        self.result_hash.setTextInteractionFlags(
-            Qt.TextInteractionFlag.TextSelectableByMouse
-        )
-
-        result_layout.addWidget(self.result_title)
-        result_layout.addWidget(self.result_summary)
-        result_layout.addWidget(self.result_hash)
+        self.result = QPlainTextEdit()
+        self.result.setReadOnly(True)
+        self.result.setMaximumHeight(112)
+        self.result.setAccessibleName("Evidence intake result")
+        result_layout.addWidget(self.result)
 
         layout.addWidget(self.result_card)
         note = QLabel(
@@ -405,8 +395,11 @@ class EvidencePage(QScrollArea):
                 self.file_details.setText("Choose an existing local memory image.")
                 return
             size = path.stat().st_size
+            size_description = (
+                f"{size} bytes" if size < 1024**2 else f"{size / 1024**3:.2f} GiB"
+            )
             self.file_details.setText(
-                f"{path.name} · {size / 1024**3:.2f} GiB · read-only import"
+                f"{path.name} · {size_description} · read-only import"
             )
         except OSError as exc:
             self.file_details.setText(f"Cannot read file details: {exc}")
@@ -442,7 +435,7 @@ class EvidencePage(QScrollArea):
                     self.existing_cases.setCurrentIndex(self.existing_cases.count() - 1)
         self.existing_cases.blockSignals(False)
         self._select_case()
-        
+
         if selected is None:
             self.case_number.setText(number or generate_case_number())
             self.case_name.setText(name)
@@ -541,9 +534,7 @@ class EvidencePage(QScrollArea):
         self.progress_label.show()
         self.progress.show()
         self.result_card.hide()
-        self.result_title.clear()
-        self.result_summary.clear()
-        self.result_hash.clear()
+        self.result.clear()
         self.registered_result = None
         self.analyse.hide()
         self.analyse.setEnabled(False)
@@ -574,15 +565,11 @@ class EvidencePage(QScrollArea):
         self.progress_label.hide()
         self.progress.hide()
 
-        self.result_title.setText("Evidence verified and registered")
-
-        self.result_summary.setText(
+        self.result.setPlainText(
+            "Evidence verified and registered\n"
             f"{Path(evidence.file_path).name} · "
             f"{evidence.file_size_bytes / 1024**3:.2f} GiB\n"
-            f"Audit: {result.audit_path}"
-        )
-
-        self.result_hash.setText(
+            f"Audit: {result.audit_path}\n"
             f"SHA-256: {evidence.sha256}"
         )
 
@@ -601,8 +588,9 @@ class EvidencePage(QScrollArea):
         self.progress.setValue(0)
         self.progress_label.setText(message)
         self.result.show()
+        self.result.setPlainText(message)
+        self.result_card.show()
         self.progress.hide()
-        self.registration_details_button.hide()
         self.status_changed.emit(message)
 
     def _finished(self) -> None:

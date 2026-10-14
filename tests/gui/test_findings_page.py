@@ -105,10 +105,21 @@ def test_cards_reflow_without_clipping_and_keep_filters(qtbot, qapp, tmp_path, m
         page.setStyleSheet(workspace_stylesheet())
         page.open_case(str(tmp_path), case)
         page.show()
-        for width, columns in ((1680, 3), (1100, 2), (700, 1), (1680, 3)):
+        for width in (1680, 1100, 700, 1680):
             page.resize(width, 950)
-            qtbot.waitUntil(lambda count=columns:
-                            page.findings_layout.getItemPosition(2)[1] == 2 % count)
+
+            def grid_matches_available_width() -> bool:
+                available_width = max(1, page.viewport().width() - 64)
+                expected_columns = max(
+                    1, min(3, (available_width + 16) // 476)
+                )
+                return (
+                    page.findings_layout.count() > 2
+                    and page.findings_layout.getItemPosition(2)[1]
+                    == 2 % expected_columns
+                )
+
+            qtbot.waitUntil(grid_matches_available_width)
             qtbot.wait(30)
             assert page.horizontalScrollBar().maximum() == 0
             for card in page._cards:

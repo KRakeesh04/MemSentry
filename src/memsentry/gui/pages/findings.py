@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, Qt, QTimer, Signal
-from PySide6.QtGui import QKeyEvent
+from PySide6.QtGui import QKeyEvent, QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
@@ -23,6 +23,7 @@ from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.finding_details import FindingDetailsDialog
 from memsentry.models.case import Case
+from memsentry.models.finding import Finding
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.finding_evidence_repository import FindingEvidenceRepository
@@ -32,7 +33,7 @@ from memsentry.storage.repositories.finding_repository import FindingRepository
 class FindingCard(QFrame):
     clicked = Signal(object)
 
-    def __init__(self, finding, parent: QWidget | None = None) -> None:
+    def __init__(self, finding: Finding, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.finding = finding
 
@@ -49,7 +50,7 @@ class FindingCard(QFrame):
             return
         super().keyPressEvent(event)
 
-    def mousePressEvent(self, event) -> None:
+    def mousePressEvent(self, event: QMouseEvent) -> None:
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.finding)
 
@@ -65,7 +66,7 @@ class FindingsPage(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
-        self.findings = []
+        self.findings: list[Finding] = []
         self._cards: list[FindingCard] = []
         self._reflow_timer = QTimer(self)
         self._reflow_timer.setSingleShot(True)
@@ -288,6 +289,11 @@ class FindingsPage(QScrollArea):
             self._reflow_timer.start(0)
         return super().viewportEvent(event)
 
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "_reflow_timer"):
+            self._reflow_timer.start(0)
+
     def _reflow_cards(self) -> None:
         width = max(1, self.viewport().width() - 64)
         columns = max(1, min(3, (width + 16) // 476))
@@ -300,14 +306,19 @@ class FindingsPage(QScrollArea):
             row = self._cards[start:start + columns]
             # Qt's old size hint can reflect the previous column width after a resize.
             # Measure wrapped content at its new width before assigning row heights.
-            height = max(200, *(card.layout().totalHeightForWidth(card_width) for card in row))
+            heights = []
+            for card in row:
+                card_layout = card.layout()
+                if card_layout is not None:
+                    heights.append(card_layout.totalHeightForWidth(card_width))
+            height = max(200, *heights)
             for offset, card in enumerate(row):
                 card.setFixedHeight(height)
                 self.findings_layout.addWidget(card, start // columns, offset)
         self.findings_layout.invalidate()
         self.findings_container.updateGeometry()
 
-    def _show_finding_details(self, finding) -> None:
+    def _show_finding_details(self, finding: Finding) -> None:
         evidence = []
         error = ""
         try:

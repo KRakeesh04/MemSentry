@@ -237,7 +237,7 @@ class WorkflowStepper(QFrame):
         """)
         colors = {
             "completed": blue,
-            "running": blue,
+            "running": text,
             "ready": text,
             "failed": text,
             "pending": muted,
@@ -250,7 +250,7 @@ class WorkflowStepper(QFrame):
             color = colors[state]
             circle.setPixmap(_icon(STAGES[index], color, 24, self.devicePixelRatioF()))
             fill = complete_fill if state == "completed" else neutral_fill
-            outline = color if state in ("completed", "running", "failed") else border
+            outline = blue if state == "completed" else border
             circle.setStyleSheet(
                 f"QLabel {{ border: 1px solid {outline}; border-radius: 12px; "
                 f"background: {fill}; }}"
@@ -268,8 +268,6 @@ class WorkflowStepper(QFrame):
             )
             circle.setToolTip(f"{STAGES[index].title()}: {state}")
             circle.setAccessibleName(f"{STAGES[index].title()}: {state}")
-        completed = self.states.count("completed")
-
         self.summary.setText(f"{self.states.count('completed')} of {len(STAGES)} complete")
         for gate, line, state in zip(self.gates, self.lines, self.checkpoints, strict=True):
             gate.clear()

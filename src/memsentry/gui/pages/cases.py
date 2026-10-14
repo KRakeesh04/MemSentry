@@ -35,6 +35,7 @@ from memsentry.storage.repositories.case_repository import CaseRepository
 
 class CasesPage(QScrollArea):
     case_opened = Signal(str, object)
+    workspace_loaded = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -239,6 +240,7 @@ class CasesPage(QScrollArea):
                 self.cases = CaseRepository(database).list_all()
             self.loaded_workspace = str(folder)
             QSettings("MemSentry", "MemSentry").setValue("intake/workspace", str(folder))
+            self.workspace_loaded.emit(self.loaded_workspace)
             self._render()
         except Exception as exc:
             self._render()

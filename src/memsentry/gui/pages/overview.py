@@ -220,7 +220,8 @@ class OverviewPage(QScrollArea):
         self.workspace_path = workspace
         self.case = case
         key = self._recent_settings_key()
-        accessed = self.settings.value(key, [], type=list)
+        accessed_value = self.settings.value(key, [], type=list)
+        accessed = accessed_value if isinstance(accessed_value, list) else []
         accessed = [str(case.id)] + [item for item in accessed if item != str(case.id)]
         self.settings.setValue(key, accessed[:4])
         self.settings.setValue("intake/workspace", workspace)
@@ -262,7 +263,8 @@ class OverviewPage(QScrollArea):
                 return
 
             cases = CaseRepository(database).list_all()
-            accessed = self.settings.value(self._recent_settings_key(), [], type=list)
+            accessed_value = self.settings.value(self._recent_settings_key(), [], type=list)
+            accessed = accessed_value if isinstance(accessed_value, list) else []
             by_id = {str(case.id): case for case in cases}
             recent_cases = [by_id[item] for item in accessed if item in by_id][:4]
             # Older installations have no access history; show available cases initially.

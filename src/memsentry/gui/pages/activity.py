@@ -552,10 +552,13 @@ class ActivityPage(QScrollArea):
         self.failures_val.setText(f"{failed_count} Failed")
 
     def _export_logs(self) -> None:
-        events = [
-            self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
-            for row in range(self.table.rowCount())
-        ]
+        events = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is not None:
+                event = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(event, dict):
+                    events.append(event)
         if not events:
             return
         filters = {

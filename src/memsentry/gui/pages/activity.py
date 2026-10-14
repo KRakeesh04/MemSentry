@@ -1,19 +1,22 @@
 """Inspect stage history, hash checks, plugin status, and audit actions."""
 
+import json
 import logging
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMenu,
-    QMessageBox,
     QPushButton,
     QScrollArea,
     QTableWidget,
@@ -24,6 +27,7 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.case_service import workspace_database
 from memsentry.gui.controls import ThemedComboBox
+from memsentry.gui.details_dialog import DetailsDialog
 from memsentry.models.case import Case
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
@@ -184,6 +188,11 @@ class ActivityPage(QScrollArea):
         refresh_btn.clicked.connect(self.refresh)
 
         action_row.addWidget(refresh_btn)
+        self.export_button = QPushButton("Export filtered logs…")
+        self.export_button.setToolTip("Save all currently filtered events in table order as a .log file")
+        self.export_button.setEnabled(False)
+        self.export_button.clicked.connect(self._export_logs)
+        action_row.addWidget(self.export_button)
 
 
         filters_container.addLayout(action_row)
@@ -252,7 +261,7 @@ class ActivityPage(QScrollArea):
         layout.addWidget(self.table)
 
         self.empty_state = QLabel(
-            "Open a case workspace\nto inspect its activity.",
+            "Open a case\nto inspect its activity.",
             self.table.viewport(),
         )
         self.empty_state.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -331,19 +340,33 @@ class ActivityPage(QScrollArea):
 
     def refresh(self) -> None:
         """Fetch workflow events from database and re-render layout."""
-        if not self.database:
+        if not self.database or self.case is None:
             self.all_events = []
             self.filtered_events = []
             self._render_events([])
-            self.empty_state.setText("Open a case workspace\nto inspect its activity.")
+            self.empty_state.setText("Open a case\nto inspect its activity.")
             self.empty_state.show()
             self.empty_state.raise_()
             self.message.setText("")
             return
 
         try:
-            repo = WorkflowRepository(self.database)
-            self.all_events = repo.list_events()
+            workflow_repo = WorkflowRepository(self.database)
+            evidence_repo = EvidenceRepository(self.database)
+
+            self.all_events = []
+
+            case_evidence = evidence_repo.list_by_case(self.case.id)
+
+            for evidence in case_evidence:
+                self.all_events.extend(
+                    workflow_repo.list_events(evidence_id=evidence.id)
+                )
+
+            self.all_events.sort(
+                key=lambda event: event.get("id", 0)
+            )
+
             self.message.setText("")
         except Exception as exc:
             logger.exception("Could not read workflow events from database")
@@ -415,6 +438,7 @@ class ActivityPage(QScrollArea):
         return s
 
     def _render_events(self, events: list[dict[str, Any]]) -> None:
+        self.export_button.setEnabled(bool(events))
         sorting_was_enabled = self.table.isSortingEnabled()
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
@@ -527,6 +551,53 @@ class ActivityPage(QScrollArea):
 
         self.failures_val.setText(f"{failed_count} Failed")
 
+    def _export_logs(self) -> None:
+        events = []
+        for row in range(self.table.rowCount()):
+            item = self.table.item(row, 0)
+            if item is not None:
+                event = item.data(Qt.ItemDataRole.UserRole)
+                if isinstance(event, dict):
+                    events.append(event)
+        if not events:
+            return
+        filters = {
+            "evidence": self.evidence_combo.currentText(),
+            "run": self.run_combo.currentText(),
+            "status": self.status_combo.currentText(),
+            "integrity": self.integrity_combo.currentText(),
+            "search": self.search_input.text(),
+        }
+        exported_at = datetime.now(UTC)
+        header = {
+            "exported_at": exported_at.isoformat(),
+            "case_id": str(self.case.id) if self.case else None,
+            "case_number": self.case.case_number if self.case else None,
+            "filters": filters,
+            "event_count": len(events),
+        }
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Export filtered activity logs",
+            f"{self.case.case_number if self.case else 'unknown'}-activity-{exported_at:%Y%m%d-%H%M%S}.log", "Log files (*.log)")
+        if not filename:
+            return
+        path = Path(filename)
+        if path.suffix.lower() != ".log":
+            path = path.with_name(path.name + ".log")
+        try:
+            # Never overwrite an existing file, which could be case evidence.
+            with path.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write("# MemSentry activity log\n")
+                stream.write("# " + json.dumps(header, ensure_ascii=False) + "\n")
+                for event in events:
+                    stream.write(json.dumps(event, ensure_ascii=False) + "\n")
+        except FileExistsError:
+            self.message.setText("Export not saved: that file already exists. Choose a new filename.")
+        except (OSError, TypeError, ValueError) as exc:
+            self.message.setText(f"Could not export logs: {exc}")
+        else:
+            self.message.setText(f"Exported {len(events)} filtered events to {path}")
+
     def _show_details(self, row: int, col: int) -> None:
         item = self.table.item(row, 0)
         if not item:
@@ -535,23 +606,30 @@ class ActivityPage(QScrollArea):
         if not event:
             return
 
-        dialog = QMessageBox(self)
-        dialog.setWindowTitle("Activity Event Details")
-        dialog.setTextFormat(Qt.TextFormat.PlainText)
-        dialog.setText(
-            f"Stage: {event.get('stage')} | Phase: {event.get('phase')} | Status: {event.get('status')}"
-        )
         detail_text = (
-            f"Event ID: {event.get('id')}\n"
-            f"Timestamp (UTC): {event.get('created_at')}\n"
-            f"Evidence ID: {event.get('evidence_id')}\n"
-            f"Analysis Run ID: {event.get('analysis_run_id') or 'N/A'}\n"
-            f"Progress: {event.get('progress')}%\n"
             f"Expected SHA-256: {event.get('expected_sha256') or 'N/A'}\n"
             f"Actual SHA-256:   {event.get('actual_sha256') or 'N/A'}\n\n"
             f"Message:\n{event.get('message') or 'No detailed message.'}"
         )
-        dialog.setDetailedText(detail_text)
+
+        dialog = DetailsDialog(
+            title="Activity Event Details",
+            heading=(
+                f"{str(event.get('stage') or 'Unknown').title()} · "
+                f"{str(event.get('phase') or 'Unknown').title()}"
+            ),
+            description=f"Status: {event.get('status') or 'N/A'}",
+            fields=[
+                ("Event ID", str(event.get("id") or "N/A")),
+                ("Timestamp (UTC)", str(event.get("created_at") or "N/A")),
+                ("Evidence ID", str(event.get("evidence_id") or "N/A")),
+                ("Analysis Run ID", str(event.get("analysis_run_id") or "N/A")),
+                ("Progress", f"{event.get('progress') or 0}%"),
+            ],
+            details=detail_text,
+            parent=self,
+        )
+
         dialog.exec()
 
     def _show_context_menu(self, pos: QPoint) -> None:

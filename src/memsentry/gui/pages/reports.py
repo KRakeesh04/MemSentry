@@ -3,14 +3,16 @@
 import logging
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QSettings, Qt
 from PySide6.QtWidgets import (
     QApplication,
+    QButtonGroup,
     QCheckBox,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QRadioButton,
@@ -60,6 +62,7 @@ class ReportsPage(QScrollArea):
         self.setFrameShape(QFrame.Shape.NoFrame)
 
         self._build_ui()
+        self.refresh()
 
     def _build_ui(self) -> None:
         content = QWidget()
@@ -85,11 +88,34 @@ class ReportsPage(QScrollArea):
 
         # Format Selection
         form_layout.addWidget(label("Format", "sectionTitle"))
+        self.format_group = QButtonGroup(self)
+        self.both_radio = QRadioButton("Both (HTML & JSON)")
         self.html_radio = QRadioButton("HTML (Readable report)")
         self.json_radio = QRadioButton("JSON (Structured results)")
-        self.html_radio.setChecked(True)
+        self.format_group.addButton(self.both_radio)
+        self.format_group.addButton(self.html_radio)
+        self.format_group.addButton(self.json_radio)
+        self.both_radio.setChecked(True)
+        form_layout.addWidget(self.both_radio)
         form_layout.addWidget(self.html_radio)
         form_layout.addWidget(self.json_radio)
+
+        # Output Destination
+        form_layout.addWidget(label("Destination directory", "sectionTitle"))
+        out_row = QHBoxLayout()
+        self.output_dir_input = QLineEdit()
+        self.output_dir_input.setPlaceholderText("Select destination directory for reports...")
+        out_row.addWidget(self.output_dir_input)
+        browse_out_btn = QPushButton("Browse…")
+        browse_out_btn.clicked.connect(self._browse_output_dir)
+        out_row.addWidget(browse_out_btn)
+        form_layout.addLayout(out_row)
+
+        output_hint = label(
+            "Defaults to your configured reporting path in Settings (or case workspace).",
+            "muted",
+        )
+        form_layout.addWidget(output_hint)
 
         # Sections
         form_layout.addWidget(label("Report contents", "sectionTitle"))
@@ -126,6 +152,29 @@ class ReportsPage(QScrollArea):
 
         self.setWidget(content)
 
+    def refresh(self) -> None:
+        """Reload configuration defaults from QSettings."""
+        qsettings = QSettings("MemSentry", "MemSentry")
+        default_format = str(qsettings.value("reporting/format", "both")).lower().strip()
+        if default_format == "html":
+            self.html_radio.setChecked(True)
+        elif default_format == "json":
+            self.json_radio.setChecked(True)
+        else:
+            self.both_radio.setChecked(True)
+
+        default_out = str(qsettings.value("reporting/output_directory", "")).strip()
+        if default_out:
+            self.output_dir_input.setText(default_out)
+        elif self.workspace_path and not self.output_dir_input.text().strip():
+            self.output_dir_input.setText(self.workspace_path)
+
+    def _browse_output_dir(self) -> None:
+        current = self.output_dir_input.text().strip() or self.workspace_path
+        path = QFileDialog.getExistingDirectory(self, "Select Output Directory", current)
+        if path:
+            self.output_dir_input.setText(path)
+
     def open_case(self, workspace_path: str, case: Case | None) -> None:
         self.workspace_path = workspace_path
         self.case = case
@@ -140,19 +189,39 @@ class ReportsPage(QScrollArea):
         self.title.setText(f"Reports · {case.case_number if case else ''}")
         self.status_label.setText("")
 
+        self.refresh()
+
     def _generate_report(self) -> None:
         if not self.case or not self.database:
             return
 
-        is_html = self.html_radio.isChecked()
-        ext = ".html" if is_html else ".json"
-        filter_str = "HTML Files (*.html)" if is_html else "JSON Files (*.json)"
-        default_name = f"MemSentry-Report-{self.case.case_number}{ext}"
+        out_dir_str = self.output_dir_input.text().strip()
+        if not out_dir_str:
+            qsettings = QSettings("MemSentry", "MemSentry")
+            out_dir_str = str(qsettings.value("reporting/output_directory", "")).strip()
 
-        file_path, _ = QFileDialog.getSaveFileName(self, "Save Report", default_name, filter_str)
+        if not out_dir_str and self.workspace_path:
+            out_dir_str = self.workspace_path
 
-        if not file_path:
+        if not out_dir_str:
+            out_dir_str = QFileDialog.getExistingDirectory(self, "Select Output Directory")
+            if not out_dir_str:
+                return
+            self.output_dir_input.setText(out_dir_str)
+
+        output_dir = Path(out_dir_str)
+        try:
+            output_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            QMessageBox.critical(self, "Error", f"Could not create output directory:\n{exc}")
             return
+
+        is_both = self.both_radio.isChecked()
+        is_html = self.html_radio.isChecked() or is_both
+        is_json = self.json_radio.isChecked() or is_both
+
+        html_path = output_dir / f"MemSentry-Report-{self.case.case_number}.html"
+        json_path = output_dir / f"MemSentry-Report-{self.case.case_number}.json"
 
         try:
             self.status_label.setText("Gathering report data...")
@@ -179,15 +248,21 @@ class ReportsPage(QScrollArea):
             self.status_label.setText("Exporting report...")
             QApplication.processEvents()
 
-            output_path = Path(file_path)
+            generated_files: list[Path] = []
             if is_html:
-                HtmlReportExporter().export(report_data, output_path)
-            else:
-                JsonReportExporter().export(report_data, output_path)
+                HtmlReportExporter().export(report_data, html_path)
+                generated_files.append(html_path)
+            if is_json:
+                JsonReportExporter().export(report_data, json_path)
+                generated_files.append(json_path)
 
-            self.status_label.setText(f"✓ Report successfully generated: {output_path.name}")
+            file_list = "\n".join(f"• {p.name}" for p in generated_files)
+            format_desc = "HTML & JSON" if is_both else ("HTML" if is_html else "JSON")
+            self.status_label.setText(f"✓ {format_desc} report(s) saved to {output_dir.name}")
             QMessageBox.information(
-                self, "Success", f"Report saved successfully to:\n{output_path}"
+                self,
+                "Report Generated",
+                f"Successfully exported report(s) to:\n{output_dir}\n\n{file_list}",
             )
 
         except Exception as exc:

@@ -22,6 +22,51 @@ from memsentry.storage.repositories.evidence_repository import EvidenceRepositor
 from memsentry.storage.repositories.finding_repository import FindingRepository
 
 
+def test_recent_cases_restore_access_order_and_fixed_size(qtbot, tmp_path, monkeypatch):
+    settings = QSettings(str(tmp_path / "recent.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr("memsentry.gui.pages.overview.QSettings", lambda *_: settings)
+    cases = [create_case(str(tmp_path), f"CASE-{i}", f"Case {i}", "") for i in range(6)]
+    settings.setValue("intake/workspace", str(tmp_path))
+    page = OverviewPage()
+    qtbot.addWidget(page)
+    assert page.case is None
+    assert page.recent_layout.count() == 4
+    for index in [0, 3, 1, 5, 2, 3]:
+        page.open_case(str(tmp_path), cases[index])
+    restored = OverviewPage()
+    qtbot.addWidget(restored)
+    assert restored.case is None
+    assert [restored.recent_layout.itemAt(i).widget().accessibleName()
+            for i in range(4)] == ["Case 3", "Case 2", "Case 5", "Case 1"]
+    assert restored.recent_card.minimumSize() == restored.recent_card.maximumSize()
+    assert restored.recent_card.width() == 320
+    assert restored.recent_card.height() == 420
+
+
+def test_analysis_errors_are_summarized_with_expandable_originals(qtbot):
+    from types import SimpleNamespace
+    from uuid import uuid4
+
+    page = OverviewPage()
+    qtbot.addWidget(page)
+    error = "module 'volatility3.framework.exceptions' has no attribute 'UnsatisfiedRequirementException'"
+    original = f"process_list: {error}\nprocess_tree: {error}"
+    page.run_choice.addItem("Failed run", SimpleNamespace(
+        id=uuid4(), status="completed_with_errors", error_message=original))
+    page.run_choice.setCurrentIndex(page.run_choice.count() - 1)
+    page._run_changed()
+    assert page.run_status.text().count("An application error") == 1
+    assert "Completed with errors" in page.run_status.text()
+    assert page.error_details.toPlainText() == original
+    assert page.error_details.isHidden()
+    page.error_details_toggle.click()
+    assert not page.error_details.isHidden()
+    page.run_choice.clear()
+    page._run_changed()
+    assert page.error_details.isHidden()
+    assert page.error_details.toPlainText() == ""
+
+
 @pytest.mark.parametrize("page_type", [ActivityPage, ArtifactsPage])
 def test_run_picker_formats_uuid_identifiers(qtbot, tmp_path, page_type):
     source = tmp_path / "synthetic.mem"
@@ -160,7 +205,7 @@ def test_overview_scopes_findings_and_shows_saved_integrity(qtbot, tmp_path):
     page.open_case(str(tmp_path), case)
     assert result.evidence.sha256 in page.hash.text()
     assert "Last recorded: verified" in page.integrity.text()
-    assert "Synthetic plugin failure" in page.run_status.text()
+    assert "Synthetic plugin failure" in page.error_details.toPlainText()
     assert "No findings" in page.findings_layout.itemAt(0).widget().text()
     page.run_choice.setCurrentIndex(1)
     findings_summary = page.findings_layout.itemAt(0).widget()

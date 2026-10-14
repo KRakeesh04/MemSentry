@@ -61,6 +61,16 @@ class IntakeService:
         return CaseRepository(Database(path)).list_all() if path.is_file() else []
 
     def run(self, request: IntakeRequest, progress: Progress, cancelled: Event) -> IntakeResult:
+        last_progress: tuple[str, int] | None = None
+
+        def report(stage: str, value: int) -> None:
+            nonlocal last_progress
+            update = (stage, value)
+            # Chunk callbacks still check cancellation, but must not flood Qt's event queue.
+            if update != last_progress:
+                last_progress = update
+                progress(stage, value)
+
         def check_cancel() -> None:
             if cancelled.is_set():
                 raise IntakeCancelled(
@@ -144,12 +154,12 @@ class IntakeService:
         def hash_file(path: Path, stage: str) -> str:
             digest = hashlib.sha256()
             total = path.stat().st_size
-            progress(stage, 0)
+            report(stage, 0)
             with path.open("rb") as stream:
                 for chunk in iter(lambda: stream.read(4 * 1024 * 1024), b""):
                     check_cancel()
                     digest.update(chunk)
-                    progress(stage, min(99, int(stream.tell() * 100 / max(total, 1))))
+                    report(stage, min(99, int(stream.tell() * 100 / max(total, 1))))
             check_cancel()
             return digest.hexdigest()
 
@@ -163,15 +173,19 @@ class IntakeService:
             os_type = request.evidence_os
             if adapter:
                 expected_size = psutil.virtual_memory().total
+                captured_size = expected_size
                 elevated = adapter.elevation_required
 
                 def capture_progress(written: int, elapsed: float | None) -> None:
+                    nonlocal captured_size
+                    if elapsed is not None:
+                        captured_size = max(written, 1)
                     # An unprivileged process cannot reliably terminate an elevated tool.
                     # Defer cancellation until capture returns or hashing starts.
                     if not elevated or elapsed is None:
                         check_cancel()
                     if elevated and cancelled.is_set():
-                        progress(
+                        report(
                             "Cancellation pending — waiting for elevated capture to finish", -1
                         )
                         return
@@ -181,13 +195,14 @@ class IntakeService:
                         else "Capturing memory (estimated)"
                     )
                     if elevated and written == 0 and elapsed is not None:
-                        progress(
+                        report(
                             "Approve the system authentication prompt · waiting for capture", -1
                         )
                         return
-                    progress(
+                    report(
                         stage,
-                        -1 if elapsed is None else min(99, int(written * 100 / expected_size)),
+                        min(99, int(written * 100 / (
+                            captured_size if elapsed is None else expected_size))),
                     )
 
                 suffix = ".lime" if adapter.target_os == "linux" else ".raw"
@@ -201,7 +216,7 @@ class IntakeService:
                 )
                 check_cancel()
                 if elevated:
-                    progress(
+                    report(
                         f"Approve the system authentication prompt · only {adapter.tool_name} is elevated",
                         -1,
                     )
@@ -258,7 +273,7 @@ class IntakeService:
                     )
                     audit("existing_evidence_verified", evidence_id=str(evidence.id))
                     record_intake(evidence)
-                    progress("Existing evidence verified", 100)
+                    report("Existing evidence verified", 100)
                     return IntakeResult(evidence, db_path, audit_path)
             evidence = evidence_repository.create(
                 EvidenceCreate(
@@ -272,7 +287,7 @@ class IntakeService:
             )
             audit("registered", evidence_id=str(evidence.id))
             record_intake(evidence)
-            progress("Evidence verified and registered", 100)
+            report("Evidence verified and registered", 100)
             return IntakeResult(evidence, db_path, audit_path)
         except Exception as exc:
             audit("cancelled" if isinstance(exc, IntakeCancelled) else "failed", error=str(exc))

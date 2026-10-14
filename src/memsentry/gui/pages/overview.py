@@ -1,6 +1,9 @@
 """Case dashboard showing recorded evidence, runs, and findings."""
 
-from PySide6.QtCore import Qt, QTimer, Signal
+import hashlib
+from pathlib import Path
+
+from PySide6.QtCore import QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QResizeEvent
 from PySide6.QtWidgets import (
     QBoxLayout,
@@ -10,6 +13,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLayout,
     QMessageBox,
+    QPlainTextEdit,
     QPushButton,
     QScrollArea,
     QVBoxLayout,
@@ -38,6 +42,33 @@ def label(text: str, style: str = "") -> QLabel:
     widget.setObjectName(style)
     widget.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     return widget
+
+
+def analysis_error_summary(message: str) -> str:
+    summaries = []
+    for line in message.splitlines():
+        if not line.strip():
+            continue
+        if "has no attribute 'UnsatisfiedRequirementException'" in line:
+            summary = (
+                "An application error hid the reason these checks failed. "
+                "This error handler has been corrected; restart the updated app and retry analysis "
+                "using the existing image. This saved run will keep its original error details."
+            )
+        elif "Unmet requirements:" in line:
+            summary = (
+                "Volatility could not prepare a check. Confirm the image OS and symbols match "
+                "the captured system. A required memory layer may also be unavailable. "
+                "Open technical details to see which requirements are missing."
+            )
+        else:
+            summary = (
+                "One or more analysis steps failed. Open technical details for the recorded "
+                "reason, or review Activity for the affected steps."
+            )
+        if summary not in summaries:
+            summaries.append(summary)
+    return "\n\n".join(summaries)
 
 
 def clear_layout(layout: QLayout) -> None:
@@ -141,6 +172,18 @@ class OverviewPage(QScrollArea):
         main.addWidget(self.run_choice)
         self.run_status = label("No recorded analysis", "muted")
         main.addWidget(self.run_status)
+        self.error_details_toggle = QPushButton("Show technical details")
+        self.error_details_toggle.setCheckable(True)
+        self.error_details_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.error_details_toggle.toggled.connect(self._toggle_error_details)
+        self.error_details_toggle.hide()
+        main.addWidget(self.error_details_toggle)
+        self.error_details = QPlainTextEdit()
+        self.error_details.setReadOnly(True)
+        self.error_details.setAccessibleName("Recorded analysis error details")
+        self.error_details.setMaximumHeight(180)
+        self.error_details.hide()
+        main.addWidget(self.error_details)
         main.addStretch()
         main_widget = QWidget()
         main_widget.setLayout(main)
@@ -148,14 +191,14 @@ class OverviewPage(QScrollArea):
         recent_card = QFrame()
         self.recent_card = recent_card
         recent_card.setObjectName("card")
-        recent_card.setMaximumWidth(320)
-        recent_card.setMinimumWidth(250)
+        recent_card.setFixedSize(320, 420)
         recent_layout = QVBoxLayout(recent_card)
         recent_layout.setContentsMargins(16, 20, 16, 20)
         recent_layout.addWidget(label("Recent cases", "sectionTitle"))
         self.recent_layout = QVBoxLayout()
         self.recent_layout.setSpacing(8)
         recent_layout.addLayout(self.recent_layout)
+        recent_layout.addStretch()
         columns.addWidget(recent_card, 1,  Qt.AlignmentFlag.AlignTop)
         layout.addLayout(columns)
         layout.addWidget(label("Recorded findings", "sectionTitle"))
@@ -168,11 +211,20 @@ class OverviewPage(QScrollArea):
         self.workflow_timer.setInterval(1000)
         self.workflow_timer.timeout.connect(self._poll_workflow)
         self.workflow_timer.start()
+        self.settings = QSettings("MemSentry", "MemSentry")
+        self.workspace_path = str(self.settings.value("intake/workspace", ""))
+        self._refresh_recent_cases()
 
     def open_case(self, workspace: str, case: Case) -> None:
         self._intake_active = False
         self.workspace_path = workspace
         self.case = case
+        key = self._recent_settings_key()
+        accessed_value = self.settings.value(key, [], type=list)
+        accessed = accessed_value if isinstance(accessed_value, list) else []
+        accessed = [str(case.id)] + [item for item in accessed if item != str(case.id)]
+        self.settings.setValue(key, accessed[:4])
+        self.settings.setValue("intake/workspace", workspace)
         self.refresh()
 
     def use_workspace(self, workspace: str) -> None:
@@ -186,7 +238,11 @@ class OverviewPage(QScrollArea):
         self.columns.setDirection(
             QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
         )
-        self.recent_card.setMaximumWidth(16777215 if narrow else 320)
+
+    def _recent_settings_key(self) -> str:
+        workspace = str(Path(self.workspace_path).expanduser().resolve())
+        digest = hashlib.sha256(workspace.encode()).hexdigest()
+        return f"overview/recent_cases/{digest}"
 
     def _refresh_recent_cases(self) -> None:
         clear_layout(self.recent_layout)
@@ -206,7 +262,14 @@ class OverviewPage(QScrollArea):
                 )
                 return
 
-            recent_cases = CaseRepository(database).list_all()[:5]
+            cases = CaseRepository(database).list_all()
+            accessed_value = self.settings.value(self._recent_settings_key(), [], type=list)
+            accessed = accessed_value if isinstance(accessed_value, list) else []
+            by_id = {str(case.id): case for case in cases}
+            recent_cases = [by_id[item] for item in accessed if item in by_id][:4]
+            # Older installations have no access history; show available cases initially.
+            if not accessed:
+                recent_cases = cases[:4]
 
             if not recent_cases:
                 self.recent_layout.addWidget(
@@ -221,9 +284,14 @@ class OverviewPage(QScrollArea):
                     short_number = short_number[:18] + "…"
 
                 button = ChoiceCard(
-                    recent.name,
+                    recent.name if len(recent.name) <= 26 else recent.name[:25] + "…",
                     f"{short_number} · {recent.status.title()}",
                 )
+                button.setFixedHeight(76)
+                button.title_label.setWordWrap(False)
+                button.description_label.setWordWrap(False)
+                button.title_label.setMinimumWidth(0)
+                button.description_label.setMinimumWidth(0)
 
                 button.setChecked(
                     self.case is not None and recent.id == self.case.id
@@ -349,7 +417,16 @@ class OverviewPage(QScrollArea):
         self.run_choice.blockSignals(False)
         self._run_changed()
 
+    def _toggle_error_details(self, expanded: bool) -> None:
+        self.error_details.setVisible(expanded)
+        self.error_details_toggle.setText(
+            "Hide technical details" if expanded else "Show technical details")
+
     def _run_changed(self) -> None:
+        self.error_details_toggle.setChecked(False)
+        self.error_details_toggle.hide()
+        self.error_details.hide()
+        self.error_details.clear()
         clear_layout(self.findings_layout)
         run = self.run_choice.currentData()
         findings = []
@@ -357,12 +434,14 @@ class OverviewPage(QScrollArea):
         self.run_status.setText("No recorded analysis — absence of findings does not mean clean.")
         if run is not None:
             self.run_status.setText(
-                f"Run: {str(run.id)[:8]}  ·  Status: {run.status.title()}"
+                f"Run: {str(run.id)[:8]}  ·  Status: {run.status.replace('_', ' ').capitalize()}"
             )
             if run.error_message:
                 self.run_status.setText(
-                    f"{self.run_status.text()}\n{run.error_message}"
+                    f"{self.run_status.text()}\n\n{analysis_error_summary(run.error_message)}"
                 )
+                self.error_details.setPlainText(run.error_message)
+                self.error_details_toggle.show()
             try:
                 if self.database is None:
                     raise ValueError("No workspace database is available")

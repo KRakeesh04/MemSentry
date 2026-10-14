@@ -156,7 +156,7 @@ def test_details_show_full_record_and_provenance(qtbot, qapp, tmp_path, backgrou
             id=uuid4(), analysis_run_id=uuid4(), rule_id="MS-R006",
             title="Unbacked executable module", severity=FindingSeverity.MEDIUM,
             confidence=.5, created_at=datetime(2026, 10, 11, 12, 30, tzinfo=UTC),
-            description="A process has an executable module without a corresponding mapped file path.\n"
+            description="A process has an executable module without a corresponding mapped file path.. Process: test.\n"
                         "Process: csrss.exe (PID: 300). Unbacked executable module detected.\n"
                         "Full recorded explanation: " + "Inspect the module mapping. " * 12 + "END.")
         link = FindingEvidence(
@@ -169,8 +169,17 @@ def test_details_show_full_record_and_provenance(qtbot, qapp, tmp_path, backgrou
         qtbot.wait(30)
         text = dialog.details.toPlainText()
         assert "END." in text
+        assert "path. Process:" in text
+        assert "path.. Process:" in finding.description
         assert str(finding.id) in text and str(finding.analysis_run_id) in text
         assert "2026-10-11 12:30:00" in text
+        assert "synthetic-row-1" not in text
+        assert not dialog.evidence_toggle.isChecked()
+        copy = next(b for b in dialog.findChildren(QPushButton) if b.text() == "Copy details")
+        copy.click()
+        assert "synthetic-row-1" in qapp.clipboard().text()
+        dialog.evidence_toggle.click()
+        text = dialog.details.toPlainText()
         assert "<unmapped>" in text and "synthetic-row-1" in text
         assert str(link.plugin_run_id) in text
         assert dialog.details.isReadOnly()
@@ -181,6 +190,9 @@ def test_details_show_full_record_and_provenance(qtbot, qapp, tmp_path, backgrou
         qtbot.wait(30)
         assert dialog.details.horizontalScrollBar().maximum() == 0
         assert dialog.details.verticalScrollBar().maximum() > 0
+        assert "END." in dialog.details.toPlainText()
+        dialog.evidence_toggle.click()
+        assert "synthetic-row-1" not in dialog.details.toPlainText()
         assert "END." in dialog.details.toPlainText()
         close = next(b for b in dialog.findChildren(QPushButton) if b.text() == "Close")
         close.click()

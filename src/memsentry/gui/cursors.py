@@ -17,7 +17,13 @@ class InteractiveCursors(QObject):
             self._update(widget)
 
     def _update(self, widget: QObject) -> None:
-        if isinstance(widget, (QAbstractButton, QComboBox)) and self.window.isAncestorOf(widget):
+        if not isinstance(widget, (QAbstractButton, QComboBox)):
+            return
+        # Follow QObject ownership across dialog window boundaries as well.
+        owner = widget.parent()
+        while owner is not None and owner is not self.window:
+            owner = owner.parent()
+        if owner is self.window:
             widget.setCursor(
                 Qt.CursorShape.PointingHandCursor
                 if widget.isEnabled()

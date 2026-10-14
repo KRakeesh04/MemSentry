@@ -88,6 +88,10 @@ def test_capture_registers_only_after_hash_verification(request_data, monkeypatc
     def capture(self, directory, filename, callback):
         path = directory / filename
         path.write_bytes(b"fake capture")
+        # Simulate a large capture's per-MiB callbacks without creating a real dump.
+        callback(24_576, 10.0)
+        for written in range(24_577):
+            callback(written, None)
         now = datetime.now(UTC)
         return AcquisitionResult(
             path,
@@ -100,11 +104,15 @@ def test_capture_registers_only_after_hash_verification(request_data, monkeypatc
         )
 
     monkeypatch.setattr(DumpManager, "capture_live", capture)
+    updates = []
     result = IntakeService().run(
-        replace(request_data, source=None, tool_path=request_data.source), lambda *_: None, Event()
+        replace(request_data, source=None, tool_path=request_data.source),
+        lambda *args: updates.append(args), Event()
     )
     assert result.evidence.evidence_os == EvidenceOS.LINUX
     assert result.evidence.file_path.suffix == ".lime"
+    hashing = [value for stage, value in updates if stage == "Hashing captured image"]
+    assert hashing == list(range(100))
 
 
 def test_reject_database_as_evidence(request_data):

@@ -7,10 +7,12 @@ from PySide6.QtGui import QCloseEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -120,12 +122,29 @@ class MainWindow(QMainWindow):
             self.pages.addWidget(
                 functional[name] if name in functional else PLACEHOLDER_PAGES[name]()
             )
+        self.running_case: Case | None = None
+        self.running_banner = QFrame()
+        self.running_banner.setObjectName("card")
+        banner_layout = QHBoxLayout(self.running_banner)
+        banner_layout.setContentsMargins(20, 12, 20, 12)
+        banner_text = QVBoxLayout()
+        self.running_case_label = QLabel()
+        self.running_case_label.setTextFormat(Qt.TextFormat.PlainText)
+        self.running_case_label.setWordWrap(True)
+        self.running_case_label.setObjectName("sectionTitle")
+        self.running_progress = QLabel()
+        self.running_progress.setTextFormat(Qt.TextFormat.PlainText)
+        self.running_progress.setWordWrap(True)
+        banner_text.addWidget(self.running_case_label)
+        banner_text.addWidget(self.running_progress)
+        banner_layout.addLayout(banner_text, 1)
+        self.running_case_button = QPushButton("View running case")
+        self.running_case_button.clicked.connect(self._view_running_case)
+        banner_layout.addWidget(self.running_case_button)
+        self.running_banner.hide()
         workspace_layout.addWidget(self.pages, 1)
-        status = QLabel("Idle  ·  No active job")
-        self.job_status = status
-        status.setObjectName("jobStatus")
-        self.evidence_page.status_changed.connect(status.setText)
-        self.pages.currentChanged.connect(lambda index: preview.setVisible(index in (8, 9)))
+        workspace_layout.addWidget(self.running_banner)
+        self.job_status = self.running_progress
         self.pages.currentChanged.connect(self._page_changed)
         preview.hide()
         self.cases_page.workspace_loaded.connect(self.overview_page.use_workspace)
@@ -144,8 +163,9 @@ class MainWindow(QMainWindow):
             self.overview_page.use_workspace(
                 self.cases_page.loaded_workspace
             )
-        workspace_layout.addWidget(status)
         layout.addWidget(self.workspace, 1)
+        self.settings_page.settings_changed.connect(self._apply_theme)
+        self.settings_page.settings_changed.connect(self.reports_page.refresh)
         app = QApplication.instance()
         assert isinstance(app, QApplication)
         app.paletteChanged.connect(self._apply_theme)
@@ -199,6 +219,14 @@ class MainWindow(QMainWindow):
         if request is None:
             return
         self.analysis_worker = AnalysisWorker(request, self)
+        self.running_case = self.overview_page.case
+        case_name = (
+            f"{self.running_case.name} · {self.running_case.case_number}"
+            if self.running_case else evidence.original_filename
+        )
+        self.running_case_label.setText(f"Background analysis · {case_name}")
+        self.running_progress.setText("Preparing analysis · validating plugins, symbols, and rules")
+        self.running_banner.show()
         self.analysis_worker.started_run.connect(self._analysis_started)
         self.analysis_worker.succeeded.connect(self._analysis_succeeded)
         self.analysis_worker.failed.connect(self._analysis_failed)
@@ -235,8 +263,6 @@ class MainWindow(QMainWindow):
         self.analysis_timer.stop()
         self.job_status.setText(f"Analysis {run.status} · {run.id}")
         self.overview_page.refresh()
-        if run.error_message:
-            self.overview_page.error.setText(run.error_message)
 
     def _analysis_failed(self, message: str) -> None:
         self.analysis_timer.stop()
@@ -246,6 +272,8 @@ class MainWindow(QMainWindow):
 
     def _analysis_finished(self) -> None:
         self.analysis_timer.stop()
+        self.running_banner.hide()
+        self.running_case = None
         if self.analysis_worker is not None:
             self.analysis_worker.deleteLater()
         self.analysis_worker = None
@@ -254,6 +282,25 @@ class MainWindow(QMainWindow):
         self.evidence_page.form.setEnabled(True)
         self.evidence_page.start.setEnabled(True)
         self.evidence_page.analyse.setEnabled(self.evidence_page.registered_result is not None)
+
+    def _view_running_case(self) -> None:
+        if self.analysis_worker is None or self.running_case is None:
+            return
+        request = self.analysis_worker.request
+        self._open_case(request.workspace, self.running_case)
+        evidence_choice = self.overview_page.evidence_choice
+        for index in range(evidence_choice.count()):
+            evidence = evidence_choice.itemData(index)
+            if evidence is not None and evidence.id == request.evidence_id:
+                evidence_choice.setCurrentIndex(index)
+                break
+        if self.analysis_run is not None:
+            run_choice = self.overview_page.run_choice
+            for index in range(run_choice.count()):
+                run = run_choice.itemData(index)
+                if run is not None and run.id == self.analysis_run.id:
+                    run_choice.setCurrentIndex(index)
+                    break
 
     def _open_case(self, workspace: str, case: Case) -> None:
         self.overview_page.open_case(workspace, case)
@@ -272,6 +319,8 @@ class MainWindow(QMainWindow):
             self.findings_page.refresh()
         elif index == 5:  # Investigation Graph page index
             self.graph_page.refresh()
+        elif index == 6:  # Reports page index
+            self.reports_page.refresh()
         elif index == 7:  # Activity page index
             self.activity_page.refresh()
 
@@ -312,7 +361,7 @@ class MainWindow(QMainWindow):
             self.overview_page.error.setText(f"Evidence saved; overview could not refresh: {exc}")
 
     def _apply_theme(self) -> None:
-        self.workspace.setStyleSheet(workspace_stylesheet())
+        self.setStyleSheet(workspace_stylesheet())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.analysis_worker is not None:

@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, Signal
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QEvent, QObject, QSettings, Qt, Signal
+from PySide6.QtGui import QColor, QMouseEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QFileDialog,
@@ -118,6 +118,9 @@ class CasesPage(QScrollArea):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.table.setMouseTracking(True)
+        self.table.viewport().setMouseTracking(True)
+        self.table.viewport().installEventFilter(self)
         self.table.setMinimumHeight(240)
         self.table.itemSelectionChanged.connect(self._selection_changed)
         self.table.cellDoubleClicked.connect(self.open_selected)
@@ -209,6 +212,18 @@ class CasesPage(QScrollArea):
             self.refresh()
         else:
             self.message.setText("Choose a workspace to see saved cases.")
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        if watched is self.table.viewport():
+            if isinstance(event, QMouseEvent) and event.type() == QEvent.Type.MouseMove:
+                actionable = self.table.indexAt(event.position().toPoint()).isValid()
+                self.table.viewport().setCursor(
+                    Qt.CursorShape.PointingHandCursor
+                    if actionable else Qt.CursorShape.ArrowCursor
+                )
+            elif event.type() == QEvent.Type.Leave:
+                self.table.viewport().setCursor(Qt.CursorShape.ArrowCursor)
+        return super().eventFilter(watched, event)
 
     def _update_create_button(self) -> None:
         valid = bool(

@@ -1,7 +1,15 @@
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QAbstractButton, QComboBox, QLineEdit, QMessageBox, QPushButton
+from PySide6.QtWidgets import (
+    QAbstractButton,
+    QComboBox,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QTableWidgetItem,
+)
 
 from memsentry.gui.main_window import MainWindow
+from memsentry.gui.pages.cases import CasesPage
 
 
 def test_interactive_controls_and_disabled_states(qtbot):
@@ -59,3 +67,18 @@ def test_popup_buttons_receive_pointer_cursors(qtbot):
         button.setEnabled(True)
         assert button.cursor().shape() == Qt.CursorShape.PointingHandCursor
         dialog.close()
+
+
+def test_case_table_rows_show_pointer_cursor(qtbot):
+    page = CasesPage()
+    qtbot.addWidget(page)
+    page.resize(1000, 700)
+    page.table.setRowCount(1)
+    page.table.setItem(0, 0, QTableWidgetItem("Case row"))
+    page.show()
+    qtbot.waitUntil(lambda: page.table.viewport().isVisible())
+    row_rect = page.table.visualRect(page.table.model().index(0, 0))
+    qtbot.mouseMove(page.table.viewport(), row_rect.center())
+    assert page.table.viewport().cursor().shape() == Qt.CursorShape.PointingHandCursor
+    qtbot.mouseMove(page.table.viewport(), page.table.viewport().rect().bottomRight())
+    assert page.table.viewport().cursor().shape() == Qt.CursorShape.ArrowCursor

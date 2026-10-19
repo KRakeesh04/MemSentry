@@ -166,14 +166,18 @@ class AnalysisService:
             self.volatility_adapter.load_symbols(self.os_type)
         results: list[dict[str, Any]] = []
         errors = []
-        for plugin in selected:
+        total_steps = len(selected) + bool(yara_rule_paths)
+        for index, plugin in enumerate(selected, start=1):
             events.record(
                 run.evidence_id,
                 analysis_run_id,
                 "analyze",
                 "operation",
                 "running",
-                message=f"Running {plugin.display_name if hasattr(plugin, 'display_name') else plugin.id}",
+                message=(
+                    f"Running plugin {index}/{total_steps}: "
+                    f"{plugin.display_name if hasattr(plugin, 'display_name') else plugin.id}"
+                ),
             )
             try:
                 result = self.plugin_runner.run_plugin(
@@ -185,10 +189,9 @@ class AnalysisService:
             except PluginRunnerError as exc:
                 errors.append(str(exc))
                 result = {"plugin_id": plugin.id, "error": str(exc)}
-                evidence = EvidenceRepository(database).get_by_id(run.evidence_id)
-                if evidence is None:
-                    raise ValueError("Evidence is not registered") from exc
-                WorkflowService(database).verify(evidence, analysis_run_id, "analyze", "after")
+                # The enclosing analyze workflow verifies the image after all selected
+                # plugins finish. Rehashing a large image after every plugin failure
+                # made all-plugin runs appear stalled and duplicated that integrity gate.
             results.append(result)
             events.record(
                 run.evidence_id,
@@ -196,7 +199,7 @@ class AnalysisService:
                 "analyze",
                 "operation",
                 "running",
-                min(99, int(len(results) * 100 / max(len(selected) + bool(yara_rule_paths), 1))),
+                min(99, int(len(results) * 100 / max(total_steps, 1))),
                 message=f"Finished plugin {plugin.id}; final SHA-256 check still required",
             )
 
@@ -207,7 +210,7 @@ class AnalysisService:
                 "analyze",
                 "operation",
                 "running",
-                message="Scanning memory with YARA",
+                message=f"Running YARA scan {len(selected) + 1}/{total_steps}",
             )
             try:
                 yara_result = self.yara_scanner.scan(

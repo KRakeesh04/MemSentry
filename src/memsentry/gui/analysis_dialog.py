@@ -66,6 +66,7 @@ class AnalysisDialog(QDialog):
         self.registry: PluginRegistry | None = None
         self.request: AnalysisRequest | None = None
         self.rule_paths: list[Path] = []
+        self.plugin_checks: dict[str, QCheckBox] = {}
         self.setWindowTitle("Analyze memory evidence")
         self.resize(680, 690)
         layout = QVBoxLayout(self)
@@ -76,9 +77,9 @@ class AnalysisDialog(QDialog):
         name.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(name)
         note = QLabel(
-            "Evidence stays read-only. SHA-256 is verified before and after analysis. "
-            "Analysis runs in the background; closing the app is blocked until it finishes."
+            "Evidence stays read-only. Integrity is checked before and after analysis."
         )
+        note.setToolTip("Analysis runs in the background. Keep the app open until it finishes.")
         note.setWordWrap(True)
         layout.addWidget(note)
         form = QFormLayout()
@@ -99,20 +100,18 @@ class AnalysisDialog(QDialog):
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._symbols)
         symbol_row.addWidget(browse)
-        form.addRow("Symbols root", symbol_row)
+        form.addRow("Symbols folder", symbol_row)
         layout.addLayout(form)
-        hint = QLabel(
-            "The symbols root directory where Volatility 3 ISF symbols for windows/ or linux/ are stored or automatically fetched."
+        self.symbols.setToolTip(
+            "Select the folder containing windows/ or linux/ symbol tables. "
+            "Windows symbols can be downloaded automatically; Linux requires matching symbols."
         )
-        hint.setWordWrap(True)
-        hint.setObjectName("muted")
-        layout.addWidget(hint)
         self.plugins = QListWidget()
         self.plugins.setAccessibleName("Available analysis plugins")
         self.plugins.setMouseTracking(True)
         self.plugins.viewport().installEventFilter(self)
         layout.addWidget(self.plugins, 1)
-        self.yara = QCheckBox("Run YARA using the selected rules")
+        self.yara = QCheckBox("Scan with YARA")
         layout.addWidget(self.yara)
         self.rules = QLineEdit()
         self.rules.setReadOnly(True)
@@ -127,18 +126,15 @@ class AnalysisDialog(QDialog):
 
         bundled = resource_directory() / "yara"
         self.rule_paths = sorted(bundled.glob("*.yar")) + sorted(bundled.glob("*.yara"))
-        self.rules.setText("; ".join(str(path) for path in self.rule_paths))
+        self._update_rules_display()
         yara_available = importlib.util.find_spec("yara") is not None
         self.yara.setEnabled(yara_available)
         self.rules_button.setEnabled(yara_available)
         self.yara.setChecked(yara_available and bool(self.rule_paths))
-        yara_hint = QLabel(
-            "YARA requires selected .yar/.yara rules. If unchecked, the run records 'not requested'."
-            if yara_available
-            else "YARA unavailable: install the optional yara-python dependency to enable scanning."
-        )
-        yara_hint.setWordWrap(True)
-        layout.addWidget(yara_hint)
+        if not yara_available:
+            yara_hint = QLabel("YARA unavailable: install yara-python to enable scanning.")
+            yara_hint.setWordWrap(True)
+            layout.addWidget(yara_hint)
         self.message = QLabel("Discovering approved local plugins…")
         self.message.setWordWrap(True)
         self.message.setTextFormat(Qt.TextFormat.PlainText)
@@ -162,10 +158,12 @@ class AnalysisDialog(QDialog):
         if watched is self.plugins.viewport():
             if isinstance(event, QMouseEvent) and event.type() == QEvent.Type.MouseMove:
                 item = self.plugins.itemAt(event.position().toPoint())
+                plugin_id = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+                check = self.plugin_checks.get(plugin_id)
                 actionable = (
-                    self.plugins.isEnabled() and item is not None
+                    self.plugins.isEnabled() and item is not None and check is not None
                     and bool(item.flags() & Qt.ItemFlag.ItemIsEnabled)
-                    and bool(item.flags() & Qt.ItemFlag.ItemIsUserCheckable)
+                    and check.isEnabled()
                 )
                 self.plugins.viewport().setCursor(
                     Qt.CursorShape.PointingHandCursor if actionable else Qt.CursorShape.ArrowCursor)
@@ -179,6 +177,7 @@ class AnalysisDialog(QDialog):
 
     def _populate(self) -> None:
         self.plugins.clear()
+        self.plugin_checks.clear()
         os_type = self.os_choice.currentData()
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(False)
         if not self.registry or not os_type:
@@ -187,27 +186,29 @@ class AnalysisDialog(QDialog):
         available = self.registry.available_plugins(os_type)
         for plugin in available:
             item = QListWidgetItem(
-                f"{plugin.display_name} — {plugin.volatility_plugin_for(os_type)}"
+                f"{plugin.display_name} - {plugin.volatility_plugin_for(os_type)}"
             )
             item.setData(Qt.ItemDataRole.UserRole, plugin.id)
             item.setToolTip(plugin.description)
             if plugin.parser in PARSER_SPECS:
-                item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                item.setCheckState(
-                    Qt.CheckState.Checked if plugin.default_enabled else Qt.CheckState.Unchecked
-                )
+                check = QCheckBox(item.text())
+                check.setChecked(plugin.default_enabled)
+                check.setToolTip(plugin.description)
+                check.setMinimumHeight(30)
+                self.plugins.addItem(item)
+                self.plugins.setItemWidget(item, check)
+                self.plugin_checks[plugin.id] = check
             else:
                 item.setFlags(Qt.ItemFlag.NoItemFlags)
                 item.setToolTip("Parser not implemented; this plugin cannot be selected.")
-            self.plugins.addItem(item)
+                self.plugins.addItem(item)
         unavailable = self.registry.unavailable_plugins(os_type)
         self.message.setText(
-            f"{len(available)} available plugins. "
-            + (
-                "Unavailable: " + ", ".join(p.display_name for p in unavailable)
-                if unavailable
-                else "Choose the checks to run."
-            )
+            f"{len(available)} plugins available"
+            + (f" · {len(unavailable)} unavailable" if unavailable else "")
+        )
+        self.message.setToolTip(
+            "Unavailable: " + ", ".join(p.display_name for p in unavailable) if unavailable else ""
         )
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setEnabled(bool(available))
 
@@ -222,14 +223,18 @@ class AnalysisDialog(QDialog):
         )
         if paths:
             self.rule_paths = [Path(path) for path in paths]
-            self.rules.setText("; ".join(paths))
+            self._update_rules_display()
             self.yara.setChecked(True)
+
+    def _update_rules_display(self) -> None:
+        self.rules.setText("; ".join(path.name for path in self.rule_paths))
+        self.rules.setToolTip("\n".join(str(path) for path in self.rule_paths))
 
     def _accept(self) -> None:
         ids = tuple(
-            self.plugins.item(index).data(Qt.ItemDataRole.UserRole)
-            for index in range(self.plugins.count())
-            if self.plugins.item(index).checkState() == Qt.CheckState.Checked
+            plugin_id
+            for plugin_id, check in self.plugin_checks.items()
+            if check.isChecked()
         )
         if not ids:
             self.message.setText("Select at least one available plugin.")

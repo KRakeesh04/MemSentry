@@ -166,10 +166,7 @@ class EvidencePage(QScrollArea):
             "Move the entire workspace, including memsentry.sqlite3 and cases/, to keep access."
         )
         import_form.addRow(self.copy_into_case)
-        copy_hint = QLabel(
-            "Optional: copy and verify the image inside the case. Otherwise, the original "
-            "file must remain accessible. To move cases, take the entire workspace folder."
-        )
+        copy_hint = QLabel("Optional: copy and verify the image inside the case. ")
         copy_hint.setWordWrap(True)
         copy_hint.setObjectName("muted")
         import_form.addRow(copy_hint)

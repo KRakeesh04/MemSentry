@@ -1,7 +1,8 @@
 from types import SimpleNamespace
 from uuid import uuid4
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QFontMetrics
 
 from memsentry.gui.analysis_dialog import AnalysisDialog, AnalysisWorker
 from memsentry.volatility.plugin_registry import PluginRegistry
@@ -17,17 +18,64 @@ def test_picker_requires_os_and_selection(qtbot, tmp_path, monkeypatch):
     assert dialog.plugins.count() == 0
     dialog.os_choice.setCurrentIndex(1)
     assert dialog.plugins.count() == 1
-    item = dialog.plugins.item(0)
-    item.setCheckState(Qt.CheckState.Unchecked)
+    check = dialog.plugin_checks["process_list"]
+    check.setChecked(False)
     dialog._accept()
     assert "Select at least one" in dialog.message.text()
-    item.setCheckState(Qt.CheckState.Checked)
+    check.setChecked(True)
     (tmp_path / "symbols" / "windows").mkdir(parents=True)
     dialog.yara.setChecked(False)
     dialog._accept()
     assert dialog.request.plugin_ids == ("process_list",)
     assert dialog.request.yara_rules == ()
     assert dialog.request.os_type == "windows"
+
+
+def test_plugin_row_and_checkbox_toggle_once_and_support_keyboard(qtbot, tmp_path, monkeypatch):
+    registry = PluginRegistry(discovered_plugins={"windows.pslist.PsList": object})
+    monkeypatch.setattr("memsentry.gui.analysis_dialog.PluginRegistry", lambda: registry)
+    evidence = SimpleNamespace(id=uuid4(), evidence_os="windows", original_filename="test.mem")
+    dialog = AnalysisDialog(str(tmp_path), evidence)
+    qtbot.addWidget(dialog)
+    qtbot.waitUntil(lambda: not dialog.catalog.isRunning() and dialog.registry is not None)
+    dialog.show()
+    item = dialog.plugins.item(0)
+    check = dialog.plugin_checks["process_list"]
+    qtbot.waitUntil(lambda: check.isVisible() and check.width() > 0)
+    assert " - " in item.text()
+    assert "—" not in item.text()
+    initial = check.isChecked()
+    text_width = QFontMetrics(check.font()).horizontalAdvance(check.text())
+    label_point = QPoint(min(check.width() - 2, text_width // 2 + 24), check.height() // 2)
+    qtbot.mouseClick(check, Qt.MouseButton.LeftButton, pos=label_point)
+    assert check.isChecked() != initial
+    qtbot.mouseClick(check, Qt.MouseButton.LeftButton, pos=label_point)
+    assert check.isChecked() == initial
+    check.setFocus()
+    qtbot.keyClick(check, Qt.Key.Key_Space)
+    assert check.isChecked() != initial
+    check.setEnabled(False)
+    qtbot.mouseClick(check, Qt.MouseButton.LeftButton, pos=label_point)
+    assert check.isChecked() != initial
+
+
+def test_yara_display_is_short_but_request_keeps_full_paths(qtbot, tmp_path, monkeypatch):
+    registry = PluginRegistry(discovered_plugins={"windows.pslist.PsList": object})
+    monkeypatch.setattr("memsentry.gui.analysis_dialog.PluginRegistry", lambda: registry)
+    evidence = SimpleNamespace(id=uuid4(), evidence_os="windows", original_filename="test.mem")
+    dialog = AnalysisDialog(str(tmp_path), evidence)
+    qtbot.addWidget(dialog)
+    qtbot.waitUntil(lambda: not dialog.catalog.isRunning() and dialog.registry is not None)
+    rule = tmp_path / "custom.yara"
+    monkeypatch.setattr(
+        "memsentry.gui.analysis_dialog.QFileDialog.getOpenFileNames",
+        lambda *_: ([str(rule)], ""),
+    )
+    dialog._rules()
+    assert dialog.rules.text() == "custom.yara"
+    assert dialog.rules.toolTip() == str(rule)
+    dialog._accept()
+    assert dialog.request.yara_rules == (rule,)
 
 
 def test_worker_routes_success_and_failure(qtbot, monkeypatch):

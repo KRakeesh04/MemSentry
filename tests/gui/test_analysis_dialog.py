@@ -3,8 +3,10 @@ from uuid import uuid4
 
 from PySide6.QtCore import QPoint, Qt
 from PySide6.QtGui import QFontMetrics
+from PySide6.QtWidgets import QApplication, QWidget
 
 from memsentry.gui.analysis_dialog import AnalysisDialog, AnalysisWorker
+from memsentry.gui.theme import create_light_palette, workspace_stylesheet
 from memsentry.volatility.plugin_registry import PluginRegistry
 
 
@@ -64,6 +66,36 @@ def test_plugin_row_and_checkbox_toggle_once_and_support_keyboard(qtbot, tmp_pat
     check.setEnabled(False)
     qtbot.mouseClick(check, Qt.MouseButton.LeftButton, pos=label_point)
     assert check.isChecked() != initial
+
+
+def test_plugin_checkbox_clicks_in_light_theme(qtbot, qapp, tmp_path, monkeypatch):
+    registry = PluginRegistry(discovered_plugins={"windows.pslist.PsList": object})
+    monkeypatch.setattr("memsentry.gui.analysis_dialog.PluginRegistry", lambda: registry)
+    evidence = SimpleNamespace(id=uuid4(), evidence_os="windows", original_filename="test.mem")
+    host = QWidget()
+    host.setObjectName("workspace")
+    previous_palette = qapp.palette()
+    qapp.setPalette(create_light_palette())
+    try:
+        host.setStyleSheet(workspace_stylesheet())
+        dialog = AnalysisDialog(str(tmp_path), evidence, host)
+        qtbot.addWidget(host)
+        qtbot.waitUntil(lambda: not dialog.catalog.isRunning() and dialog.registry is not None)
+        dialog.show()
+        check = dialog.plugin_checks["process_list"]
+        qtbot.waitUntil(lambda: check.isVisible() and check.width() > 0)
+        initial = check.isChecked()
+        indicator_point = check.mapToGlobal(QPoint(8, check.height() // 2))
+        hit_widget = QApplication.widgetAt(indicator_point)
+        assert hit_widget is check
+        qtbot.mouseClick(
+            hit_widget,
+            Qt.MouseButton.LeftButton,
+            pos=hit_widget.mapFromGlobal(indicator_point),
+        )
+        assert check.isChecked() != initial
+    finally:
+        qapp.setPalette(previous_palette)
 
 
 def test_yara_display_is_short_but_request_keeps_full_paths(qtbot, tmp_path, monkeypatch):

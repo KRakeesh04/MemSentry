@@ -100,7 +100,10 @@ def test_settings_page_theme_switch_and_save(qtbot, qapp, tmp_path, monkeypatch)
     # Switch to Light Theme
     page.theme_choice.setCurrentIndex(light_index)
     assert not is_dark_theme()
-    assert "#F1F5F9" in workspace_stylesheet()
+    light_stylesheet = workspace_stylesheet()
+    assert "#F1F5F9" in light_stylesheet
+    assert "QCheckBox::indicator:unchecked { border: 1px solid #000000; }" in light_stylesheet
+    assert "QCheckBox::indicator:checked" not in light_stylesheet
 
     page.save_button.click()
     assert "saved successfully" in page.status_message.text()
@@ -118,7 +121,9 @@ def test_settings_page_theme_switch_and_save(qtbot, qapp, tmp_path, monkeypatch)
     assert dark_index >= 0
     page.theme_choice.setCurrentIndex(dark_index)
     assert is_dark_theme()
-    assert "#11151C" in workspace_stylesheet()
+    dark_stylesheet = workspace_stylesheet()
+    assert "#11151C" in dark_stylesheet
+    assert "QCheckBox::indicator" not in dark_stylesheet
 
     page.save_button.click()
     assert ini_settings.value("appearance/theme") == THEME_DARK

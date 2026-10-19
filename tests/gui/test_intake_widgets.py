@@ -1,9 +1,10 @@
 import pytest
-from PySide6.QtCore import QMimeData, QPoint, QSettings, QUrl
+from PySide6.QtCore import QMimeData, QPoint, QSettings, Qt, QUrl
+from PySide6.QtWidgets import QApplication
 
 from memsentry.gui.intake_widgets import FileDropArea, SystemCard
 from memsentry.gui.pages.evidence import EvidencePage
-from memsentry.gui.theme import workspace_stylesheet
+from memsentry.gui.theme import create_light_palette, workspace_stylesheet
 
 
 @pytest.mark.parametrize("height", [720, 1080])
@@ -71,6 +72,68 @@ def test_selected_file_details_update(qtbot, tmp_path):
     page.drop_area.file_selected.emit(str(path))
     assert page.source.text() == str(path)
     assert "9 bytes" in page.file_details.text()
+
+
+def test_copy_into_case_checkbox_is_clickable_in_light_theme(qtbot, qapp):
+    previous_palette = qapp.palette()
+    qapp.setPalette(create_light_palette())
+    try:
+        page = EvidencePage()
+        qtbot.addWidget(page)
+        page.setObjectName("workspace")
+        page.setStyleSheet(workspace_stylesheet())
+        page.resize(1100, 720)
+        page.show()
+        checkbox = page.copy_into_case
+        qtbot.waitUntil(lambda: checkbox.isVisible() and checkbox.width() > 0)
+        page.ensureWidgetVisible(checkbox)
+        qtbot.wait(50)
+        initial = checkbox.isChecked()
+        indicator_point = checkbox.mapToGlobal(QPoint(8, checkbox.height() // 2))
+        hit_widget = QApplication.widgetAt(indicator_point)
+        assert hit_widget is checkbox
+        qtbot.mouseClick(
+            hit_widget,
+            Qt.MouseButton.LeftButton,
+            pos=hit_widget.mapFromGlobal(indicator_point),
+        )
+        assert checkbox.isChecked() != initial
+        label_x = checkbox.fontMetrics().horizontalAdvance("Copy into case") + 32
+        qtbot.mouseClick(
+            checkbox, Qt.MouseButton.LeftButton,
+            pos=QPoint(min(label_x, checkbox.width() - 2), checkbox.height() // 2),
+        )
+        assert checkbox.isChecked() == initial
+    finally:
+        qapp.setPalette(previous_palette)
+
+
+def test_copy_checkbox_receives_light_theme_click_in_application(qtbot, qapp):
+    from memsentry.gui.main_window import MainWindow
+
+    previous_palette = qapp.palette()
+    qapp.setPalette(create_light_palette())
+    try:
+        window = MainWindow()
+        qtbot.addWidget(window)
+        window.show()
+        window.pages.setCurrentIndex(2)
+        checkbox = window.evidence_page.copy_into_case
+        window.evidence_page.ensureWidgetVisible(checkbox)
+        qtbot.waitUntil(lambda: checkbox.isVisible() and checkbox.width() > 0)
+        qtbot.wait(50)
+        initial = checkbox.isChecked()
+        point = checkbox.mapToGlobal(QPoint(8, checkbox.height() // 2))
+        hit_widget = QApplication.widgetAt(point)
+        assert hit_widget is checkbox
+        qtbot.mouseClick(
+            hit_widget,
+            Qt.MouseButton.LeftButton,
+            pos=hit_widget.mapFromGlobal(point),
+        )
+        assert checkbox.isChecked() != initial
+    finally:
+        qapp.setPalette(previous_palette)
 
 
 @pytest.mark.parametrize("custom", [False, True])

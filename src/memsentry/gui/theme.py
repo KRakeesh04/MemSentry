@@ -265,6 +265,7 @@ def workspace_stylesheet() -> str:
         }}
         #workspace QComboBox QAbstractItemView::item:disabled {{ color: {muted}; }}
         #workspace QCheckBox, #workspace QRadioButton {{ color: {text}; spacing: 8px; }}
+        {'''#workspace QCheckBox::indicator:unchecked { border: 1px solid #000000; }''' if not dark else ''}
         #workspace QPushButton:enabled:hover {{ border-color: {accent}; color: {accent}; }}
         #workspace QPushButton#primaryAction:enabled {{
             background: {accent}; color: {background}; font-weight: bold;

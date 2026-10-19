@@ -42,8 +42,10 @@ def test_plugin_row_and_checkbox_toggle_once_and_support_keyboard(qtbot, tmp_pat
     item = dialog.plugins.item(0)
     check = dialog.plugin_checks["process_list"]
     qtbot.waitUntil(lambda: check.isVisible() and check.width() > 0)
-    assert " - " in item.text()
-    assert "—" not in item.text()
+    assert item.text() == ""
+    assert " - " in check.text()
+    assert "—" not in check.text()
+    assert item.sizeHint().height() >= check.sizeHint().height()
     initial = check.isChecked()
     text_width = QFontMetrics(check.font()).horizontalAdvance(check.text())
     label_point = QPoint(min(check.width() - 2, text_width // 2 + 24), check.height() // 2)
@@ -139,6 +141,15 @@ def test_main_window_keeps_job_alive_and_blocks_close(qtbot, tmp_path, monkeypat
     monkeypatch.setattr("memsentry.gui.main_window.QMessageBox.information", lambda *args: None)
     window.show()
     try:
+        assert window.minimumWidth() == 1100
+        assert window.minimumHeight() == 720
+        assert "MEM" in window.sidebar.brand.wordmark.text()
+        assert "SENTRY" in window.sidebar.brand.wordmark.text()
+        assert window.sidebar.brand.wordmark.font().pointSize() == 12
+        window.resize(window.minimumWidth(), window.height())
+        assert window.sidebar.brand.wordmark.font().pointSize() == 12
+        window.resize(1200, window.height())
+        assert window.sidebar.brand.wordmark.font().pointSize() == 16
         window._start_analysis()
         assert window.analysis_worker is not None
         assert not window.running_banner.isHidden()

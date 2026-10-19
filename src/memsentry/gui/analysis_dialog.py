@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -194,7 +195,10 @@ class AnalysisDialog(QDialog):
                 check = QCheckBox(item.text())
                 check.setChecked(plugin.default_enabled)
                 check.setToolTip(plugin.description)
-                check.setMinimumHeight(30)
+                check.setMinimumHeight(34)
+                check.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+                item.setText("")
+                item.setSizeHint(check.sizeHint())
                 self.plugins.addItem(item)
                 self.plugins.setItemWidget(item, check)
                 self.plugin_checks[plugin.id] = check

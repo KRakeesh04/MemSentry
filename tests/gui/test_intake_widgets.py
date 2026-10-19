@@ -1,8 +1,39 @@
 import pytest
-from PySide6.QtCore import QMimeData, QSettings, QUrl
+from PySide6.QtCore import QMimeData, QPoint, QSettings, QUrl
 
-from memsentry.gui.intake_widgets import FileDropArea
+from memsentry.gui.intake_widgets import FileDropArea, SystemCard
 from memsentry.gui.pages.evidence import EvidencePage
+from memsentry.gui.theme import workspace_stylesheet
+
+
+@pytest.mark.parametrize("height", [720, 1080])
+def test_tool_selection_keeps_upper_sections_in_place(qtbot, height):
+    page = EvidencePage()
+    qtbot.addWidget(page)
+    page.setObjectName("workspace")
+    page.setStyleSheet(workspace_stylesheet())
+    page.resize(1600, height)
+    page.mode.setCurrentIndex(1)
+    configured = page.tool_choices.button(0)
+    configured.setEnabled(True)
+    configured.click()
+    page.show()
+    qtbot.wait(50)
+    system = page.findChild(SystemCard)
+    widgets = [page.mode_buttons.button(1), system, *page.tool_choices.buttons()]
+
+    def positions():
+        return [widget.mapTo(page.widget(), QPoint()) for widget in widgets]
+
+    before = positions()
+    page.tool_choices.button(page.custom_tool_id).setEnabled(True)
+    page.tool_choices.button(page.custom_tool_id).click()
+    qtbot.wait(50)
+    assert positions() == before
+    assert system.height() >= system.minimumSizeHint().height()
+    configured.click()
+    qtbot.wait(50)
+    assert positions() == before
 
 
 def test_drop_accepts_one_local_file_only(tmp_path):

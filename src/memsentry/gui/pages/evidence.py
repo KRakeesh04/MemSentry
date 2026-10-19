@@ -4,7 +4,7 @@ import platform
 from pathlib import Path
 from threading import Event
 
-from PySide6.QtCore import QObject, QSettings, QThread, Signal
+from PySide6.QtCore import QObject, QSettings, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLayout,
     QLineEdit,
     QPlainTextEdit,
     QProgressBar,
@@ -72,6 +73,7 @@ class EvidencePage(QScrollArea):
         self.settings = QSettings("MemSentry", "MemSentry")
         content = QWidget()
         layout = QVBoxLayout(content)
+        layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
         layout.setContentsMargins(32, 32, 32, 32)
         layout.setSpacing(20)
         title = QLabel("Add memory evidence")
@@ -86,6 +88,7 @@ class EvidencePage(QScrollArea):
         layout.addWidget(intro)
 
         self.form = QFrame()
+        self.form.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
         self.form.setObjectName("card")
 
         form_layout = QVBoxLayout(self.form)
@@ -167,10 +170,13 @@ class EvidencePage(QScrollArea):
         form_layout.addWidget(self.import_fields)
 
         self.live_fields = QWidget()
-        live_form = QFormLayout(self.live_fields)
+        self.live_fields.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        live_form = QVBoxLayout(self.live_fields)
+        live_form.setAlignment(Qt.AlignmentFlag.AlignTop)
         live_form.setContentsMargins(0, 0, 0, 0)
-        live_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-        live_form.addRow(SystemCard())
+        system_card = SystemCard()
+        system_card.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)
+        live_form.addWidget(system_card)
 
         live_form.addItem(QSpacerItem(
             0,
@@ -196,9 +202,9 @@ class EvidencePage(QScrollArea):
         load_env.clicked.connect(self._load_environment)
         tool_header_layout.addWidget(load_env)
 
-        live_form.addRow(tool_header)
+        live_form.addWidget(tool_header)
 
-        live_form.setVerticalSpacing(10)
+        live_form.setSpacing(10)
 
         self.tool_choices = QButtonGroup(self)
         self.configured_tools = available_tools()
@@ -207,18 +213,18 @@ class EvidencePage(QScrollArea):
             card.setEnabled(option.available)
             card.setToolTip(option.description)
             self.tool_choices.addButton(card, index)
-            live_form.addRow(card)
+            live_form.addWidget(card)
         custom = ChoiceCard(
             "Choose another executable", "Browse for AVML on Linux or WinPmem mini on Windows"
         )
         custom.setEnabled(platform.system() in ("Linux", "Windows"))
         self.custom_tool_id = len(self.configured_tools)
         self.tool_choices.addButton(custom, self.custom_tool_id)
-        live_form.addRow(custom)
+        live_form.addWidget(custom)
         self.tool = QLineEdit(str(self.settings.value("intake/tool", "")))
         self.tool.setPlaceholderText("Optional: uses MEMSENTRY_AVML / MEMSENTRY_WINPMEM or PATH")
         self.custom_tool_row = self._path_row(self.tool)
-        live_form.addRow(self.custom_tool_row)
+        live_form.addWidget(self.custom_tool_row)
         self.tool.setPlaceholderText("Path to a compatible acquisition executable")
         self.tool_choices.idClicked.connect(self._tool_selected)
         selected = next(
@@ -240,7 +246,10 @@ class EvidencePage(QScrollArea):
             "Choose Legacy AVML only for older AVML binaries."
         )
         if platform.system() == "Linux":
-            live_form.addRow("AVML version", self.profile)
+            profile_form = QFormLayout()
+            profile_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+            profile_form.addRow("AVML version", self.profile)
+            live_form.addLayout(profile_form)
         else:
             self.profile.setParent(self.live_fields)
             self.profile.hide()

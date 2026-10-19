@@ -1,8 +1,9 @@
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtCore import QPoint, QPointF, Qt
+from PySide6.QtGui import QColor, QPalette, QWheelEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
@@ -12,6 +13,28 @@ from PySide6.QtWidgets import (
 
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.theme import workspace_stylesheet
+
+
+def test_combo_wheel_is_ignored_without_changing_selection(qtbot):
+    combo = ThemedComboBox()
+    combo.addItems(["First", "Second", "Third"])
+    qtbot.addWidget(combo)
+    combo.show()
+    initial_index = combo.currentIndex()
+    local = QPointF(combo.rect().center())
+    event = QWheelEvent(
+        local,
+        QPointF(combo.mapToGlobal(local.toPoint())),
+        QPoint(0, 0),
+        QPoint(0, -120),
+        Qt.MouseButton.NoButton,
+        Qt.KeyboardModifier.NoModifier,
+        Qt.ScrollPhase.ScrollUpdate,
+        False,
+    )
+    QApplication.sendEvent(combo, event)
+    assert combo.currentIndex() == initial_index
+    assert not event.isAccepted()
 
 
 @pytest.mark.parametrize("dark", [False, True])

@@ -1,5 +1,6 @@
 """Shared controls that use the workspace theme instead of native menu painting."""
 
+from PySide6.QtGui import QWheelEvent
 from PySide6.QtWidgets import QComboBox, QListView, QStyledItemDelegate, QWidget
 
 
@@ -10,3 +11,7 @@ class ThemedComboBox(QComboBox):
         self.setView(view)
         # Native combo menu delegates can paint the desktop menu background over QSS.
         view.setItemDelegate(QStyledItemDelegate(view))
+
+    def wheelEvent(self, event: QWheelEvent) -> None:
+        """Let parent scroll areas handle the wheel without changing the selection."""
+        event.ignore()

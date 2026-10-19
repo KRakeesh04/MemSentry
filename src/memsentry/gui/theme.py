@@ -151,6 +151,10 @@ def workspace_stylesheet() -> str:
             selection-color: {accent}; outline: 0;
         }}
         #workspace QListWidget::item {{ padding: 10px; }}
+        #workspace QListWidget#analysisPluginList::item {{ padding: 0px; }}
+        #workspace QCheckBox#analysisPluginCheck:hover {{
+            background: {selected};
+        }}
         #workspace QScrollArea, #workspace QScrollArea > QWidget > QWidget {{
             background: {background}; border: none;
         }}

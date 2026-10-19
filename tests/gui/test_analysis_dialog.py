@@ -19,6 +19,8 @@ def test_picker_requires_os_and_selection(qtbot, tmp_path, monkeypatch):
     dialog.os_choice.setCurrentIndex(1)
     assert dialog.plugins.count() == 1
     check = dialog.plugin_checks["process_list"]
+    assert check.objectName() == "analysisPluginCheck"
+    assert dialog.plugins.spacing() == 3
     check.setChecked(False)
     dialog._accept()
     assert "Select at least one" in dialog.message.text()
@@ -41,11 +43,14 @@ def test_plugin_row_and_checkbox_toggle_once_and_support_keyboard(qtbot, tmp_pat
     dialog.show()
     item = dialog.plugins.item(0)
     check = dialog.plugin_checks["process_list"]
+    assert dialog.plugins.selectionMode() == dialog.plugins.SelectionMode.NoSelection
     qtbot.waitUntil(lambda: check.isVisible() and check.width() > 0)
     assert item.text() == ""
     assert " - " in check.text()
     assert "—" not in check.text()
     assert item.sizeHint().height() >= check.sizeHint().height()
+    qtbot.mouseMove(dialog.plugins.viewport(), QPoint(8, item.sizeHint().height() // 2))
+    assert not item.isSelected()
     initial = check.isChecked()
     text_width = QFontMetrics(check.font()).horizontalAdvance(check.text())
     label_point = QPoint(min(check.width() - 2, text_width // 2 + 24), check.height() // 2)

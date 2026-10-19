@@ -108,8 +108,13 @@ class AnalysisDialog(QDialog):
             "Windows symbols can be downloaded automatically; Linux requires matching symbols."
         )
         self.plugins = QListWidget()
+        self.plugins.setObjectName("analysisPluginList")
         self.plugins.setAccessibleName("Available analysis plugins")
         self.plugins.setMouseTracking(True)
+        self.plugins.setSpacing(3)
+        # The checkbox widgets are the interactive controls. Keep hover feedback
+        # on those widgets so it follows their actual row geometry.
+        self.plugins.setSelectionMode(QListWidget.SelectionMode.NoSelection)
         self.plugins.viewport().installEventFilter(self)
         layout.addWidget(self.plugins, 1)
         self.yara = QCheckBox("Scan with YARA")
@@ -193,6 +198,7 @@ class AnalysisDialog(QDialog):
             item.setToolTip(plugin.description)
             if plugin.parser in PARSER_SPECS:
                 check = QCheckBox(item.text())
+                check.setObjectName("analysisPluginCheck")
                 check.setChecked(plugin.default_enabled)
                 check.setToolTip(plugin.description)
                 check.setMinimumHeight(34)

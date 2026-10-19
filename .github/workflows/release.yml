@@ -191,7 +191,7 @@ jobs:
           path: release-assets
           merge-multiple: true
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: v${{ needs.version-check.outputs.version }}
           name: MemSentry v${{ needs.version-check.outputs.version }}

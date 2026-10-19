@@ -24,6 +24,7 @@ from memsentry.storage.repositories.case_repository import (
 from memsentry.storage.repositories.evidence_repository import (
     EvidenceNotFoundError,
     EvidenceRepository,
+    EvidenceRepositoryError,
 )
 from memsentry.storage.repositories.finding_evidence_repository import (
     FindingEvidenceRepository,
@@ -41,6 +42,45 @@ def db(tmp_path: Path) -> Database:
     database = Database(db_file)
     database.initialize()
     return database
+
+
+def test_evidence_path_migration_preserves_legacy_references(db):
+    case = CaseRepository(db).create(CaseCreate(case_number="LEGACY", name="Legacy"))
+    repository = EvidenceRepository(db)
+    data = EvidenceCreate(
+        case_id=case.id, original_filename="external.mem", file_path=Path("external.mem"),
+        file_size_bytes=1, sha256="a" * 64,
+    )
+    evidence = repository.create(data)
+    with db.transaction() as connection:
+        connection.execute("ALTER TABLE evidence DROP COLUMN path_base")
+        connection.execute("DELETE FROM schema_migrations WHERE version = 9")
+    assert repository.get_by_id(evidence.id).file_path == data.file_path
+    db.initialize()
+    restored = repository.get_by_id(evidence.id)
+    assert restored.file_path == data.file_path
+    assert restored.sha256 == data.sha256
+
+
+def test_case_relative_evidence_cannot_escape_case(db):
+    case = CaseRepository(db).create(CaseCreate(case_number="PORTABLE", name="Portable"))
+    repository = EvidenceRepository(db)
+    outside = db.database_path.parent / "outside.mem"
+    data = EvidenceCreate(
+        case_id=case.id, original_filename=outside.name, file_path=outside,
+        file_size_bytes=1, sha256="a" * 64,
+    )
+    with pytest.raises(EvidenceRepositoryError, match="inside its case"):
+        repository.create(data, case_relative=True)
+    inside = db.database_path.parent / "cases" / str(case.id) / "evidence" / "image.mem"
+    evidence = repository.create(data.model_copy(update={"file_path": inside}), case_relative=True)
+    assert evidence.file_path == inside
+    with db.transaction() as connection:
+        connection.execute(
+            "UPDATE evidence SET file_path = ? WHERE id = ?", ("../../outside.mem", str(evidence.id))
+        )
+    with pytest.raises(EvidenceRepositoryError, match="escapes"):
+        repository.get_by_id(evidence.id)
 
 
 def test_case_repository_crud_and_status(db: Database) -> None:

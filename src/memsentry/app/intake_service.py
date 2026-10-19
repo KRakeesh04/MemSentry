@@ -19,6 +19,7 @@ from memsentry.acquisition.adapters.base import DumpAdapter
 from memsentry.acquisition.adapters.linuxDumpManager import LinuxAvmlAdapter
 from memsentry.acquisition.adapters.windowsDumpManager import WindowsWinPmemAdapter
 from memsentry.acquisition.dump_manager import DumpManager
+from memsentry.app.evidence_copy import check_copy_space, copy_image
 from memsentry.models.case import Case, CaseCreate
 from memsentry.models.evidence import Evidence, EvidenceCreate, EvidenceOS, IntegrityStatus
 from memsentry.storage.database import Database
@@ -40,6 +41,7 @@ class IntakeRequest:
     evidence_os: EvidenceOS | None = None
     tool_path: Path | None = None
     avml_modern: bool = True
+    copy_into_case: bool = False
 
 
 @dataclass(frozen=True)
@@ -167,7 +169,11 @@ class IntakeService:
             "started",
             mode="import" if source else "capture",
             source=str(source) if source else None,
+            copy_into_case=request.copy_into_case,
         )
+        copy_directory: Path | None = None
+        copied_path: Path | None = None
+        registered_copy = False
         try:
             expected = None
             os_type = request.evidence_os
@@ -230,8 +236,27 @@ class IntakeService:
                 audit("capture_completed", path=str(source), command=result.command)
             assert source is not None
             before = source.stat()
+            if request.copy_into_case and adapter is None:
+                evidence_directory = case_dir / "evidence"
+                evidence_directory.mkdir(exist_ok=True)
+                if not evidence_directory.resolve().is_relative_to(case_dir.resolve()):
+                    raise ValueError("The evidence directory must remain inside the case folder.")
+                # Check the actual destination volume (it may be mounted separately).
+                free, required = check_copy_space(evidence_directory, before.st_size)
+                audit("copy_space_checked", free_bytes=free, required_bytes=required)
+                copy_directory = evidence_directory / str(uuid4())
+                copy_directory.mkdir(mode=0o700)
+                copied_path = copy_directory / f"{uuid4()}.partial"
             baseline = expected or hash_file(source, "Calculating SHA-256 baseline")
             audit("baseline", sha256=baseline, path=str(source))
+            if copied_path is not None:
+                audit("copy_started", source=str(source), destination=str(copied_path))
+                copy_image(source, copied_path, before.st_size, check_cancel, report)
+                copy_stat = copied_path.stat()
+                copied_hash = hash_file(copied_path, "Verifying copied evidence SHA-256")
+                if copied_hash != baseline or copied_path.stat().st_size != before.st_size:
+                    audit("copy_integrity_failed", expected=baseline, actual=copied_hash)
+                    raise ValueError("Copied evidence does not match the source SHA-256. Registration stopped.")
             verified = hash_file(source, "Verifying evidence SHA-256")
             after = source.stat()
             if baseline != verified or (before.st_size, before.st_mtime_ns, before.st_ino) != (
@@ -245,6 +270,7 @@ class IntakeService:
                 )
             check_cancel()
             audit("verified", expected=baseline, actual=verified)
+            original_filename = source.name
             evidence_repository = EvidenceRepository(database)
             def record_intake(evidence: Evidence) -> None:
                 events = WorkflowRepository(database)
@@ -268,6 +294,9 @@ class IntakeService:
                         raise ValueError(
                             "This image differs from its registered hash. Original baseline preserved."
                         )
+                    if copied_path is not None:
+                        # An explicitly requested copy becomes a separate evidence record.
+                        continue
                     evidence = evidence_repository.update_integrity_status(
                         registered.id, IntegrityStatus.VERIFIED
                     )
@@ -275,16 +304,33 @@ class IntakeService:
                     record_intake(evidence)
                     report("Existing evidence verified", 100)
                     return IntakeResult(evidence, db_path, audit_path)
+            if copied_path is not None:
+                check_cancel()
+                copy_after = copied_path.stat()
+                if (copy_stat.st_size, copy_stat.st_mtime_ns, copy_stat.st_ino) != (
+                    copy_after.st_size, copy_after.st_mtime_ns, copy_after.st_ino
+                ):
+                    audit("copy_integrity_failed", reason="Copy changed during verification")
+                    raise ValueError("Copied evidence changed during verification. Registration stopped.")
+                destination = copied_path.parent / original_filename
+                if destination.exists():
+                    raise FileExistsError("Evidence destination already exists; it will not be overwritten.")
+                copied_path.rename(destination)
+                copied_path = destination
+                source = destination
+                audit("copy_verified", path=str(source), sha256=copied_hash)
             evidence = evidence_repository.create(
                 EvidenceCreate(
                     case_id=case.id,
-                    original_filename=source.name,
+                    original_filename=original_filename,
                     file_path=source,
                     file_size_bytes=after.st_size,
                     sha256=baseline,
                     evidence_os=os_type,
-                )
+                ),
+                case_relative=copied_path is not None or adapter is not None,
             )
+            registered_copy = True
             audit("registered", evidence_id=str(evidence.id))
             record_intake(evidence)
             report("Evidence verified and registered", 100)
@@ -292,3 +338,12 @@ class IntakeService:
         except Exception as exc:
             audit("cancelled" if isinstance(exc, IntakeCancelled) else "failed", error=str(exc))
             raise
+        finally:
+            if copied_path is not None and not registered_copy:
+                try:
+                    copied_path.unlink(missing_ok=True)
+                    if copy_directory is not None:
+                        copy_directory.rmdir()
+                    audit("copy_removed", path=str(copied_path))
+                except OSError as exc:
+                    audit("copy_cleanup_failed", path=str(copied_path), error=str(exc))

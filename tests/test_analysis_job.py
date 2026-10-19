@@ -1,12 +1,15 @@
 import hashlib
 import json
 import sys
+from dataclasses import replace
+from threading import Event
 from types import SimpleNamespace
 
 import pytest
 import volatility3.symbols
 
 from memsentry.app.analysis_job import AnalysisRequest, run_analysis
+from memsentry.app.intake_service import IntakeRequest, IntakeService
 from memsentry.models.case import CaseCreate
 from memsentry.models.evidence import EvidenceCreate
 from memsentry.storage.database import Database
@@ -83,6 +86,37 @@ def test_background_job_persists_volatility_and_yara(job, tmp_path, monkeypatch)
         tmp_path / "cases" / str(evidence.case_id) / "analysis" / str(run.id) / "selection.json"
     )
     assert json.loads(manifest.read_text())["yara_requested"] is True
+
+
+def test_analysis_uses_case_copy_after_workspace_move(job, tmp_path, monkeypatch):
+    _, original, request = job
+    result = IntakeService().run(
+        IntakeRequest(tmp_path, "TEST", "Analysis test", original.file_path, copy_into_case=True),
+        lambda *_: None,
+        Event(),
+    )
+    relative = result.evidence.file_path.relative_to(tmp_path)
+    moved = tmp_path.with_name(tmp_path.name + "-moved")
+    tmp_path.rename(moved)
+    (moved / original.file_path.name).rename(moved / "original-offline.mem")
+    paths = []
+
+    def run_plugin(name, path):
+        paths.append(path)
+        assert str(path) == str(moved / relative)
+        return PluginExecutionResult(name, "[]", "test", 0.1)
+
+    adapter = SimpleNamespace(
+        initialize=lambda _: None,
+        load_symbols=lambda _: moved / "symbols" / "windows",
+        run_plugin=run_plugin,
+    )
+    monkeypatch.setattr("memsentry.app.analysis_job.VolatilityAdapter", lambda *_, **__: adapter)
+    run = run_analysis(replace(
+        request, workspace=str(moved), evidence_id=result.evidence.id, symbol_dir=moved / "symbols"
+    ))
+    assert run.status == "completed"
+    assert paths
 
 
 def test_job_rejects_wrong_os(job):

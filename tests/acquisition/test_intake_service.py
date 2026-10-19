@@ -1,11 +1,14 @@
 import hashlib
 import json
+import shutil
 from dataclasses import replace
 from threading import Event
+from types import SimpleNamespace
 
 import pytest
 
 from memsentry.app.intake_service import IntakeCancelled, IntakeRequest, IntakeService
+from memsentry.app.workflow_service import WorkflowService
 from memsentry.models.evidence import EvidenceOS
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
@@ -111,6 +114,10 @@ def test_capture_registers_only_after_hash_verification(request_data, monkeypatc
     )
     assert result.evidence.evidence_os == EvidenceOS.LINUX
     assert result.evidence.file_path.suffix == ".lime"
+    with Database(result.database_path).connection() as connection:
+        row = connection.execute("SELECT file_path, path_base FROM evidence").fetchone()
+    assert row["path_base"] == "case"
+    assert row["file_path"].startswith("intake/")
     hashing = [value for stage, value in updates if stage == "Hashing captured image"]
     assert hashing == list(range(100))
 
@@ -168,3 +175,172 @@ def test_cancel_elevated_capture_waits_then_skips_registration(request_data, mon
     audit = next(request_data.workspace.rglob("audit.jsonl")).read_text()
     assert '"action": "cancelled"' in audit
     assert '"action": "registered"' not in audit
+
+
+def test_copy_is_verified_and_accessible_after_workspace_moves(request_data, tmp_path):
+    original = request_data.source.read_bytes()
+    original_stat = request_data.source.stat()
+    result = IntakeService().run(
+        replace(request_data, copy_into_case=True), lambda *_: None, Event()
+    )
+    copied = result.evidence.file_path
+    case_dir = request_data.workspace / "cases" / str(result.evidence.case_id)
+    assert copied.is_relative_to(case_dir / "evidence")
+    assert copied.name == request_data.source.name
+    assert copied.read_bytes() == original
+    assert request_data.source.read_bytes() == original
+    assert request_data.source.stat().st_mtime_ns == original_stat.st_mtime_ns
+    database = Database(result.database_path)
+    with database.connection() as connection:
+        row = connection.execute("SELECT file_path, path_base FROM evidence").fetchone()
+    assert row["path_base"] == "case"
+    assert row["file_path"] == copied.relative_to(case_dir).as_posix()
+    records = [json.loads(line) for line in result.audit_path.read_text().splitlines()]
+    assert {record["action"] for record in records} >= {
+        "copy_space_checked", "baseline", "copy_started", "copy_verified", "registered"
+    }
+    moved = tmp_path / "moved-workspace"
+    shutil.move(str(request_data.workspace), moved)
+    request_data.source.rename(tmp_path / "original-offline.mem")
+    relocated_db = Database(moved / "memsentry.sqlite3")
+    evidence = EvidenceRepository(relocated_db).get_by_id(result.evidence.id)
+    assert evidence.file_path == moved / copied.relative_to(request_data.workspace)
+    assert evidence.file_path.read_bytes() == original
+    WorkflowService(relocated_db).verify(evidence, None, "verify", "after")
+
+
+def test_copy_low_space_stops_before_hashing(request_data, monkeypatch):
+    monkeypatch.setattr(
+        "memsentry.app.evidence_copy.shutil.disk_usage", lambda _: SimpleNamespace(free=1)
+    )
+    with pytest.raises(ValueError, match="Insufficient free space"):
+        IntakeService().run(
+            replace(request_data, copy_into_case=True),
+            lambda *_: pytest.fail("Must reject insufficient space before reading evidence"),
+            Event(),
+        )
+    assert not list(request_data.workspace.rglob("*.partial"))
+    audit = next(request_data.workspace.rglob("audit.jsonl")).read_text()
+    assert '"action": "registered"' not in audit
+
+
+@pytest.mark.parametrize("stage", [
+    "Copying evidence into case",
+    "Verifying copied evidence SHA-256",
+    "Verifying evidence SHA-256",
+])
+def test_cancel_copy_removes_only_new_files(request_data, stage):
+    cancel = Event()
+    original = request_data.source.read_bytes()
+
+    def progress(message, value):
+        if message == stage and (stage != "Copying evidence into case" or value > 0):
+            cancel.set()
+
+    with pytest.raises(IntakeCancelled):
+        IntakeService().run(replace(request_data, copy_into_case=True), progress, cancel)
+    assert request_data.source.read_bytes() == original
+    assert not list(request_data.workspace.rglob("*.partial"))
+    assert not list(request_data.workspace.rglob(request_data.source.name))
+    assert '"action": "copy_removed"' in next(request_data.workspace.rglob("audit.jsonl")).read_text()
+
+
+@pytest.mark.parametrize("change_copy", [False, True])
+def test_copy_rejects_changed_source_or_corrupted_destination(request_data, change_copy):
+    original = request_data.source.read_bytes()
+
+    def progress(stage, value):
+        if stage == "Verifying copied evidence SHA-256" and value == 0:
+            target = next(request_data.workspace.rglob("*.partial")) if change_copy else request_data.source
+            target.write_bytes(b"X" * len(original))
+
+    with pytest.raises(ValueError, match=r"does not match|changed during intake"):
+        IntakeService().run(replace(request_data, copy_into_case=True), progress, Event())
+    assert not list(request_data.workspace.rglob("*.partial"))
+    assert not list(request_data.workspace.rglob(request_data.source.name))
+    if change_copy:
+        assert request_data.source.read_bytes() == original
+
+
+def test_copy_write_failure_cleans_partial_image(request_data, monkeypatch):
+    import errno
+
+    original = request_data.source.read_bytes()
+
+    def fail_copy(source, destination, *args):
+        destination.write_bytes(b"partial")
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr("memsentry.app.intake_service.copy_image", fail_copy)
+    with pytest.raises(OSError, match="No space left"):
+        IntakeService().run(replace(request_data, copy_into_case=True), lambda *_: None, Event())
+    assert request_data.source.read_bytes() == original
+    assert not list(request_data.workspace.rglob("*.partial"))
+
+
+def test_repeat_copy_never_overwrites_existing_evidence(request_data):
+    request = replace(request_data, copy_into_case=True)
+    first = IntakeService().run(request, lambda *_: None, Event())
+    first_bytes = first.evidence.file_path.read_bytes()
+    second = IntakeService().run(request, lambda *_: None, Event())
+    assert first.evidence.file_path != second.evidence.file_path
+    assert first.evidence.file_path.read_bytes() == first_bytes
+    assert second.evidence.sha256 == first.evidence.sha256
+
+
+def test_copy_cannot_replace_a_previously_registered_baseline(request_data):
+    first = IntakeService().run(request_data, lambda *_: None, Event())
+    request_data.source.write_bytes(b"changed synthetic evidence")
+    with pytest.raises(ValueError, match="registered hash"):
+        IntakeService().run(replace(request_data, copy_into_case=True), lambda *_: None, Event())
+    repository = EvidenceRepository(Database(first.database_path))
+    assert len(repository.list_by_case(first.evidence.case_id)) == 1
+    assert repository.get_by_id(first.evidence.id).integrity_status == "modified"
+    assert not list(request_data.workspace.rglob("*.partial"))
+
+
+def test_registration_failure_removes_verified_copy(request_data, monkeypatch):
+    def fail_registration(*args, **kwargs):
+        raise RuntimeError("Database registration failed")
+
+    monkeypatch.setattr(EvidenceRepository, "create", fail_registration)
+    with pytest.raises(RuntimeError, match="Database registration failed"):
+        IntakeService().run(replace(request_data, copy_into_case=True), lambda *_: None, Event())
+    assert not list(request_data.workspace.rglob(request_data.source.name))
+    assert request_data.source.is_file()
+
+
+def test_post_registration_failure_keeps_registered_copy(request_data, monkeypatch):
+    def fail_record(*args, **kwargs):
+        raise RuntimeError("Workflow recording failed")
+
+    monkeypatch.setattr("memsentry.app.intake_service.WorkflowRepository.record", fail_record)
+    with pytest.raises(RuntimeError, match="Workflow recording failed"):
+        IntakeService().run(replace(request_data, copy_into_case=True), lambda *_: None, Event())
+    case = IntakeService.list_cases(request_data.workspace)[0]
+    evidence = EvidenceRepository(Database(request_data.workspace / "memsentry.sqlite3")).list_by_case(case.id)
+    assert len(evidence) == 1
+    assert evidence[0].file_path.read_bytes() == request_data.source.read_bytes()
+
+
+def test_copy_changed_after_its_hash_is_rejected(request_data):
+    def progress(stage, value):
+        if stage == "Verifying evidence SHA-256" and value == 0:
+            copied = next(request_data.workspace.rglob("*.partial"))
+            copied.write_bytes(b"changed copy")
+
+    with pytest.raises(ValueError, match="Copied evidence changed during verification"):
+        IntakeService().run(replace(request_data, copy_into_case=True), progress, Event())
+    assert not list(request_data.workspace.rglob("*.partial"))
+
+
+def test_space_is_rechecked_after_baseline_hash(request_data, monkeypatch):
+    def progress(stage, value):
+        if stage == "Calculating SHA-256 baseline":
+            monkeypatch.setattr(
+                "memsentry.app.evidence_copy.shutil.disk_usage", lambda _: SimpleNamespace(free=0)
+            )
+
+    with pytest.raises(ValueError, match="Insufficient free space"):
+        IntakeService().run(replace(request_data, copy_into_case=True), progress, Event())
+    assert not list(request_data.workspace.rglob("*.partial"))

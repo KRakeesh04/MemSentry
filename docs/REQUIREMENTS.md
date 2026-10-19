@@ -23,6 +23,8 @@ The system shall:
 
 * create and reopen a case with a case ID/name, investigator, description, and timestamps;
 * register one or more memory images without automatically copying or modifying the source file;
+* optionally copy an imported image into its case after checking destination space, preserve the source unchanged, and register the copy only after its SHA-256 matches the source baseline and the source passes a second integrity check; cancellation or failure removes only the new unregistered copy;
+* store case-owned evidence paths relative to the case directory so evidence remains accessible when the complete workspace (database and case directories) moves; externally referenced evidence retains its original path;
 * record evidence path, filename, size, timestamps, detected image/system information when available, and analysis history; and
 * write all case data and outputs to a separate structured case directory.
 

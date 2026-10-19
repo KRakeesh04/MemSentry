@@ -160,6 +160,19 @@ class EvidencePage(QScrollArea):
         self.drop_area.invalid_drop.connect(self._failed)
         import_form.addRow(self.drop_area)
         import_form.addRow("Selected image", self._path_row(self.source))
+        self.copy_into_case = QCheckBox("Copy into case (portable evidence)")
+        self.copy_into_case.setToolTip(
+            "Keep a verified copy inside the case. Requires space for the full image. "
+            "Move the entire workspace, including memsentry.sqlite3 and cases/, to keep access."
+        )
+        import_form.addRow(self.copy_into_case)
+        copy_hint = QLabel(
+            "Optional: copy and verify the image inside the case. Otherwise, the original "
+            "file must remain accessible. To move cases, take the entire workspace folder."
+        )
+        copy_hint.setWordWrap(True)
+        copy_hint.setObjectName("muted")
+        import_form.addRow(copy_hint)
 
         self.file_details = QLabel("No memory image selected.")
         self.file_details.setObjectName("muted")
@@ -496,8 +509,8 @@ class EvidencePage(QScrollArea):
                 "Only the acquisition tool is elevated. "
                 "Cancellation may wait until the elevated capture finishes."
             if live
-            else "The original image stays in its current location and is opened read-only. "
-            "Two SHA-256 passes establish and verify its baseline."
+            else "The original image is always opened read-only. SHA-256 checks verify "
+            "the source and any optional copy before registration."
         )
 
     @property
@@ -541,6 +554,7 @@ class EvidencePage(QScrollArea):
             evidence_os=os_values[self.os_choice.currentIndex()],
             tool_path=tool_path,
             avml_modern=self.profile.currentIndex() == 0,
+            copy_into_case=not live and self.copy_into_case.isChecked(),
         )
         self.settings.setValue("intake/workspace", str(request.workspace))
         self.settings.setValue("intake/tool", self.tool.text().strip())

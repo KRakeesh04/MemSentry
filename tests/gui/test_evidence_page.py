@@ -1,6 +1,7 @@
 from threading import Event
 from unittest.mock import Mock
 
+import pytest
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QDialog
 
@@ -9,7 +10,8 @@ from memsentry.gui.main_window import MainWindow
 from memsentry.gui.pages.evidence import EvidencePage
 
 
-def test_import_worker_updates_ui_and_database(qtbot, tmp_path, monkeypatch):
+@pytest.mark.parametrize("copy_into_case", [False, True])
+def test_import_worker_updates_ui_and_database(qtbot, tmp_path, monkeypatch, copy_into_case):
     monkeypatch.setattr(
         "memsentry.gui.pages.evidence.QSettings",
         lambda *_: QSettings(str(tmp_path / "settings.ini"), QSettings.Format.IniFormat),
@@ -24,6 +26,8 @@ def test_import_worker_updates_ui_and_database(qtbot, tmp_path, monkeypatch):
     page.case_number.setText("TEST")
     page.case_name.setText("UI test")
     page.source.setText(str(source))
+    assert not page.copy_into_case.isChecked()
+    page.copy_into_case.setChecked(copy_into_case)
     with qtbot.waitSignal(page.evidence_registered, timeout=5000):
         page.start.click()
     qtbot.waitUntil(lambda: page.worker is None)
@@ -33,6 +37,9 @@ def test_import_worker_updates_ui_and_database(qtbot, tmp_path, monkeypatch):
     assert not page.analyse.isHidden()
     assert page.analyse.isEnabled()
     assert (workspace / "memsentry.sqlite3").is_file()
+    registered_path = page.registered_result.evidence.file_path
+    assert registered_path.read_bytes() == source.read_bytes()
+    assert (registered_path != source) == copy_into_case
 
 
 def test_live_mode_requires_authorization(qtbot):

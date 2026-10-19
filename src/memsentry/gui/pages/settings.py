@@ -21,8 +21,8 @@ from PySide6.QtWidgets import (
 )
 from volatility3.framework import constants
 
-from memsentry.acquisition.config import load_environment_file
 from memsentry.acquisition.tool_catalog import available_tools
+from memsentry.gui.acquisition_settings import import_tool_settings, restore_tool_settings
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.theme import (
     THEME_DARK,
@@ -39,10 +39,12 @@ class SettingsPage(QScrollArea):
     """Application preferences and environment configuration page."""
 
     settings_changed = Signal()
+    tool_configuration_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._loading_settings = False
+        restore_tool_settings()
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
 
@@ -251,7 +253,7 @@ class SettingsPage(QScrollArea):
             row_layout.setContentsMargins(8, 4, 8, 4)
 
             name = QLabel(tool.name)
-            status_text = "Available" if tool.available else "Not Found / Not Configured"
+            status_text = tool.description
             status = QLabel(f"{tool.name} ({tool.host}) · {status_text}")
             status.setObjectName("muted" if not tool.available else "")
 
@@ -318,9 +320,10 @@ class SettingsPage(QScrollArea):
         )
         if path:
             try:
-                load_environment_file(path)
+                import_tool_settings(path)
                 self.refresh()
-                self.status_message.setText(f"Loaded configuration from {Path(path).name}")
+                self.tool_configuration_changed.emit()
+                self.status_message.setText(f"Loaded and saved configuration from {Path(path).name}")
             except Exception as exc:
                 self.status_message.setText(f"Could not load env file: {exc}")
 

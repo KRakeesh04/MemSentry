@@ -30,7 +30,8 @@ def available_tools() -> list[ToolOption]:
             path is not None and path.is_file() and (os.name == "nt" or os.access(path, os.X_OK))
         )
         if host != target:
-            reason = f"{target} only · unavailable on this host"
+            configured_status = "Configured" if path is not None and path.is_file() else "Not found / not configured"
+            reason = f"{configured_status} · {target} only · unavailable on this host"
         elif not usable:
             reason = f"Not available · configure {variable} or choose a compatible executable"
         else:

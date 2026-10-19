@@ -166,6 +166,8 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.workspace, 1)
         self.settings_page.settings_changed.connect(self._apply_theme)
         self.settings_page.settings_changed.connect(self.reports_page.refresh)
+        self.settings_page.tool_configuration_changed.connect(self.evidence_page.refresh_tools)
+        self.evidence_page.tool_configuration_changed.connect(self.settings_page.refresh)
         app = QApplication.instance()
         assert isinstance(app, QApplication)
         app.paletteChanged.connect(self._apply_theme)

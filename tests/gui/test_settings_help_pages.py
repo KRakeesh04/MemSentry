@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import Mock
 
 from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import QLabel
@@ -8,6 +9,54 @@ from PySide6.QtWidgets import QLabel
 from memsentry.gui.main_window import MainWindow
 from memsentry.gui.pages.help import HelpPage
 from memsentry.gui.pages.settings import SettingsPage
+
+
+def test_tool_configuration_persists_and_refreshes_both_pages(qtbot, tmp_path, monkeypatch):
+    from memsentry.gui.acquisition_settings import restore_tool_settings
+
+    preferences = QSettings(str(tmp_path / "tools.ini"), QSettings.Format.IniFormat)
+    monkeypatch.setattr(
+        "memsentry.gui.acquisition_settings.QSettings",
+        Mock(return_value=preferences, Status=QSettings.Status),
+    )
+    monkeypatch.setattr("memsentry.acquisition.tool_catalog.platform.system", lambda: "Linux")
+    monkeypatch.setenv("MEMSENTRY_AVML", str(tmp_path / "old-missing-avml"))
+    monkeypatch.setenv("MEMSENTRY_WINPMEM", "")
+    monkeypatch.delenv("MEMSENTRY_OSXPMEM", raising=False)
+    avml = tmp_path / "avml"
+    avml.write_bytes(b"synthetic tool; never executed")
+    avml.chmod(0o700)
+    winpmem = tmp_path / "winpmem.exe"
+    winpmem.write_bytes(b"synthetic tool; never executed")
+    config = tmp_path / ".env"
+    config.write_text("MEMSENTRY_AVML=./avml\nMEMSENTRY_WINPMEM=./winpmem.exe\n")
+    monkeypatch.setattr(
+        "memsentry.gui.pages.settings.QFileDialog.getOpenFileName",
+        lambda *_: (str(config), ""),
+    )
+    window = MainWindow()
+    qtbot.addWidget(window)
+    assert not window.evidence_page.configured_tools[0].available
+    window.settings_page._load_env_file()
+    assert window.evidence_page.configured_tools[0].available
+    assert window.evidence_page.configured_tools[0].path == avml
+    assert window.evidence_page.tool_choices.checkedId() == 0
+    labels = window.settings_page.findChildren(QLabel)
+    assert any("Configured · Windows only" in label.text() for label in labels)
+
+    monkeypatch.delenv("MEMSENTRY_AVML")
+    monkeypatch.delenv("MEMSENTRY_WINPMEM")
+    restore_tool_settings()
+    assert os.environ["MEMSENTRY_AVML"] == str(avml)
+    assert os.environ["MEMSENTRY_WINPMEM"] == str(winpmem)
+
+    replacement = tmp_path / "new-avml"
+    replacement.write_bytes(b"synthetic replacement; never executed")
+    replacement.chmod(0o700)
+    config.write_text("MEMSENTRY_AVML=./new-avml\n")
+    window.evidence_page._load_environment()
+    assert window.evidence_page.configured_tools[0].path == replacement
+    assert any(str(replacement) in label.text() for label in window.settings_page.findChildren(QLabel))
 
 
 def test_settings_page_loads_and_saves(qtbot, tmp_path, monkeypatch):

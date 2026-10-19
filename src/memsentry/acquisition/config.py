@@ -8,10 +8,10 @@ from pathlib import Path
 _PATH_VARIABLES = {"MEMSENTRY_AVML", "MEMSENTRY_WINPMEM", "MEMSENTRY_OSXPMEM"}
 
 
-def load_environment_file(path: str | Path) -> None:
+def load_environment_file(path: str | Path, *, override: bool = False) -> None:
     """Load approved variables from a dotenv-style file.
 
-    Existing environment variables are never overwritten. Relative acquisition
+    Existing environment variables are preserved unless override is requested. Relative acquisition
     tool paths are resolved relative to the directory containing the file.
     """
 
@@ -19,6 +19,7 @@ def load_environment_file(path: str | Path) -> None:
     if not environment_file.is_file():
         return
 
+    values = {}
     for line_number, raw_line in enumerate(
         environment_file.read_text(encoding="utf-8").splitlines(), start=1
     ):
@@ -36,4 +37,9 @@ def load_environment_file(path: str | Path) -> None:
         value = value.strip().strip("'\"")
         if key in _PATH_VARIABLES and value and not Path(value).is_absolute():
             value = str((environment_file.parent / value).resolve())
-        os.environ.setdefault(key, value)
+        values[key] = value
+    for key, value in values.items():
+        if override:
+            os.environ[key] = value
+        else:
+            os.environ.setdefault(key, value)

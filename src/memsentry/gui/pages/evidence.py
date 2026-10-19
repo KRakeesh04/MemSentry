@@ -25,10 +25,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from memsentry.acquisition.config import load_environment_file
 from memsentry.acquisition.tool_catalog import available_tools
 from memsentry.app.case_service import generate_case_number
 from memsentry.app.intake_service import IntakeRequest, IntakeResult, IntakeService
+from memsentry.gui.acquisition_settings import import_tool_settings, restore_tool_settings
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.intake_widgets import ChoiceCard, FileDropArea, SystemCard
 from memsentry.models.case import Case
@@ -56,6 +56,7 @@ class IntakeWorker(QThread):
 
 
 class EvidencePage(QScrollArea):
+    tool_configuration_changed = Signal()
     status_changed = Signal(str)
     evidence_registered = Signal(object)
     analyze_requested = Signal(object)
@@ -71,6 +72,7 @@ class EvidencePage(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.settings = QSettings("MemSentry", "MemSentry")
+        restore_tool_settings()
         content = QWidget()
         layout = QVBoxLayout(content)
         layout.setSizeConstraint(QLayout.SizeConstraint.SetMinAndMaxSize)
@@ -375,10 +377,15 @@ class EvidencePage(QScrollArea):
         if not path:
             return
         try:
-            load_environment_file(path)
+            import_tool_settings(path)
         except (OSError, ValueError) as exc:
             self._failed(f"Could not load configuration: {exc}")
             return
+        self.refresh_tools()
+        self.tool_configuration_changed.emit()
+        self.progress_label.setText("Configuration loaded and saved.")
+
+    def refresh_tools(self) -> None:
         self.configured_tools = available_tools()
         for index, option in enumerate(self.configured_tools):
             card = self.tool_choices.button(index)
@@ -393,9 +400,6 @@ class EvidencePage(QScrollArea):
         )
         self.tool_choices.button(selected).setChecked(True)
         self._tool_selected(selected)
-        self.progress_label.setText(
-            "Configuration loaded. Existing environment variables take precedence."
-        )
 
     def _file_selected(self, text: str) -> None:
         try:

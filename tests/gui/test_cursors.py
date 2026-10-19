@@ -1,6 +1,8 @@
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QPointF, Qt
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QApplication,
     QComboBox,
     QLineEdit,
     QMessageBox,
@@ -76,9 +78,21 @@ def test_case_table_rows_show_pointer_cursor(qtbot):
     page.table.setRowCount(1)
     page.table.setItem(0, 0, QTableWidgetItem("Case row"))
     page.show()
-    qtbot.waitUntil(lambda: page.table.viewport().isVisible())
+    qtbot.waitExposed(page)
     row_rect = page.table.visualRect(page.table.model().index(0, 0))
-    qtbot.mouseMove(page.table.viewport(), row_rect.center())
-    assert page.table.viewport().cursor().shape() == Qt.CursorShape.PointingHandCursor
-    qtbot.mouseMove(page.table.viewport(), page.table.viewport().rect().bottomRight())
-    assert page.table.viewport().cursor().shape() == Qt.CursorShape.ArrowCursor
+    viewport = page.table.viewport()
+    for position, expected in (
+        (row_rect.center(), Qt.CursorShape.PointingHandCursor),
+        (viewport.rect().bottomRight(), Qt.CursorShape.ArrowCursor),
+    ):
+        # Deliver the event directly: Wayland does not support QTest cursor warping.
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            QPointF(position),
+            QPointF(viewport.mapToGlobal(position)),
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QApplication.sendEvent(viewport, event)
+        assert viewport.cursor().shape() == expected

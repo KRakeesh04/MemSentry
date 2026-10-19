@@ -2,7 +2,7 @@ from threading import Event
 
 import pytest
 from PySide6.QtCore import QSettings
-from PySide6.QtWidgets import QLabel, QPushButton
+from PySide6.QtWidgets import QBoxLayout, QLabel, QPushButton
 
 from memsentry.app.case_service import create_case, generate_case_number, workspace_database
 from memsentry.app.intake_service import IntakeRequest, IntakeService
@@ -26,7 +26,7 @@ from memsentry.storage.repositories.finding_repository import FindingRepository
 from memsentry.storage.repositories.plugin_run_repository import PluginRunRepository
 
 
-def test_recent_cases_restore_access_order_and_fixed_size(qtbot, tmp_path, monkeypatch):
+def test_recent_cases_restore_access_order_and_resize(qtbot, tmp_path, monkeypatch):
     settings = QSettings(str(tmp_path / "recent.ini"), QSettings.Format.IniFormat)
     monkeypatch.setattr("memsentry.gui.pages.overview.QSettings", lambda *_: settings)
     cases = [create_case(str(tmp_path), f"CASE-{i}", f"Case {i}", "") for i in range(6)]
@@ -42,9 +42,20 @@ def test_recent_cases_restore_access_order_and_fixed_size(qtbot, tmp_path, monke
     assert restored.case is None
     assert [restored.recent_layout.itemAt(i).widget().accessibleName()
             for i in range(4)] == ["Case 3", "Case 2", "Case 5", "Case 1"]
-    assert restored.recent_card.minimumSize() == restored.recent_card.maximumSize()
-    assert restored.recent_card.width() == 320
-    assert restored.recent_card.height() == 420
+    restored.resize(1200, 900)
+    restored.show()
+    qtbot.waitUntil(lambda: restored.columns.direction() == QBoxLayout.Direction.LeftToRight)
+    assert restored.recent_card.maximumWidth() == 360
+    assert restored.actions_layout.direction() == QBoxLayout.Direction.LeftToRight
+    assert restored.actions() == []
+
+    restored.resize(560, 900)
+    qtbot.waitUntil(lambda: restored.columns.direction() == QBoxLayout.Direction.TopToBottom)
+    assert restored.actions_layout.direction() == QBoxLayout.Direction.TopToBottom
+    assert restored.recent_card.maximumWidth() > 360
+    qtbot.waitUntil(lambda: restored.horizontalScrollBar().maximum() == 0)
+    assert [restored.recent_layout.itemAt(i).widget().accessibleName()
+            for i in range(4)] == ["Case 3", "Case 2", "Case 5", "Case 1"]
 
 
 def test_analysis_errors_are_summarized_with_expandable_originals(qtbot):

@@ -107,7 +107,7 @@ class OverviewPage(QScrollArea):
         self.subtitle = label("Open or create a case to view its evidence and findings.", "muted")
         layout.addWidget(self.subtitle)
         actions = QBoxLayout(QBoxLayout.Direction.LeftToRight)
-        self.actions = actions
+        self.actions_layout = actions
         self.import_button = QPushButton("Add memory evidence")
         self.import_button.setObjectName("primaryAction")
         self.import_button.setEnabled(False)
@@ -238,7 +238,7 @@ class OverviewPage(QScrollArea):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         narrow = self.viewport().width() < 800
-        self.actions.setDirection(
+        self.actions_layout.setDirection(
             QBoxLayout.Direction.TopToBottom if self.viewport().width() < 620
             else QBoxLayout.Direction.LeftToRight
         )

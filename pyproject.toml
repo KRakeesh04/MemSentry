@@ -142,7 +142,6 @@ module = [
     "psutil.*",
     "volatility3.*",
     "PySide6.*",
-    "networkx.*",
     "yara.*"
 ]
 ignore_missing_imports = true

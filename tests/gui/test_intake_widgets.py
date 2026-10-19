@@ -13,13 +13,16 @@ def test_tool_selection_keeps_upper_sections_in_place(qtbot, height):
     qtbot.addWidget(page)
     page.setObjectName("workspace")
     page.setStyleSheet(workspace_stylesheet())
-    page.resize(1600, height)
+    # Keep compositor-driven resizing separate from the tool-selection layout check.
+    page.setFixedSize(1600, height)
     page.mode.setCurrentIndex(1)
     configured = page.tool_choices.button(0)
     configured.setEnabled(True)
     configured.click()
     page.show()
-    qtbot.wait(50)
+    qtbot.waitExposed(page)
+    qtbot.waitUntil(lambda: page.widget().width() == page.viewport().width())
+    QApplication.processEvents()
     system = page.findChild(SystemCard)
     widgets = [page.mode_buttons.button(1), system, *page.tool_choices.buttons()]
 
@@ -29,11 +32,13 @@ def test_tool_selection_keeps_upper_sections_in_place(qtbot, height):
     before = positions()
     page.tool_choices.button(page.custom_tool_id).setEnabled(True)
     page.tool_choices.button(page.custom_tool_id).click()
-    qtbot.wait(50)
+    qtbot.waitUntil(lambda: page.custom_tool_row.isVisible())
+    QApplication.processEvents()
     assert positions() == before
     assert system.height() >= system.minimumSizeHint().height()
     configured.click()
-    qtbot.wait(50)
+    qtbot.waitUntil(lambda: page.custom_tool_row.isHidden())
+    QApplication.processEvents()
     assert positions() == before
 
 

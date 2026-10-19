@@ -165,7 +165,7 @@ class AnalysisDialog(QDialog):
             if isinstance(event, QMouseEvent) and event.type() == QEvent.Type.MouseMove:
                 item = self.plugins.itemAt(event.position().toPoint())
                 plugin_id = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
-                check = self.plugin_checks.get(plugin_id)
+                check = self.plugin_checks.get(plugin_id) if isinstance(plugin_id, str) else None
                 actionable = (
                     self.plugins.isEnabled() and item is not None and check is not None
                     and bool(item.flags() & Qt.ItemFlag.ItemIsEnabled)

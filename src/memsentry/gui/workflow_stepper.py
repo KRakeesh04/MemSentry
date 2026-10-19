@@ -72,7 +72,7 @@ class WorkflowStepper(QFrame):
         scroll.setFixedHeight(126)
         self.rail_scroll = scroll
         rail = QWidget()
-        rail.setMinimumWidth(850)
+        rail.setMinimumWidth(0)
         row = QHBoxLayout(rail)
         row.setContentsMargins(0, 4, 0, 0)
         row.setSpacing(0)
@@ -83,7 +83,7 @@ class WorkflowStepper(QFrame):
         for index, name in enumerate(STAGES):
             node = QWidget()
             column = QVBoxLayout(node)
-            node.setMinimumWidth(84)
+            node.setMinimumWidth(64)
             column.setContentsMargins(2, 0, 2, 0)
             column.setSpacing(6)
             circle = QLabel()
@@ -91,6 +91,7 @@ class WorkflowStepper(QFrame):
             circle.setAlignment(Qt.AlignmentFlag.AlignCenter)
             caption = QLabel(name.title())
             caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            caption.setWordWrap(True)
             column.addWidget(circle, alignment=Qt.AlignmentFlag.AlignHCenter)
             column.addWidget(caption)
             status = QLabel()

@@ -106,7 +106,8 @@ class OverviewPage(QScrollArea):
         layout.addWidget(self.title)
         self.subtitle = label("Open or create a case to view its evidence and findings.", "muted")
         layout.addWidget(self.subtitle)
-        actions = QHBoxLayout()
+        actions = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.actions = actions
         self.import_button = QPushButton("Add memory evidence")
         self.import_button.setObjectName("primaryAction")
         self.import_button.setEnabled(False)
@@ -191,7 +192,9 @@ class OverviewPage(QScrollArea):
         recent_card = QFrame()
         self.recent_card = recent_card
         recent_card.setObjectName("card")
-        recent_card.setFixedSize(320, 420)
+        recent_card.setMinimumWidth(0)
+        recent_card.setMaximumWidth(360)
+        recent_card.setMinimumHeight(220)
         recent_layout = QVBoxLayout(recent_card)
         recent_layout.setContentsMargins(16, 20, 16, 20)
         recent_layout.addWidget(label("Recent cases", "sectionTitle"))
@@ -235,9 +238,15 @@ class OverviewPage(QScrollArea):
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         narrow = self.viewport().width() < 800
+        self.actions.setDirection(
+            QBoxLayout.Direction.TopToBottom if self.viewport().width() < 620
+            else QBoxLayout.Direction.LeftToRight
+        )
         self.columns.setDirection(
             QBoxLayout.Direction.TopToBottom if narrow else QBoxLayout.Direction.LeftToRight
         )
+        self.recent_card.setMaximumWidth(16777215 if narrow else 360)
+        self.recent_card.setMinimumHeight(220 if narrow else 320)
 
     def _recent_settings_key(self) -> str:
         workspace = str(Path(self.workspace_path).expanduser().resolve())

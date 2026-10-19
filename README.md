@@ -116,7 +116,65 @@ MEMSENTRY_WINPMEM=tools/winpmem_mini_x64.exe
 
 Packaged startup loads this file automatically; tool paths are relative to it. Existing environment variables take precedence. In development, set `MEMSENTRY_ENV_FILE` to the `.env` path or use **Load .env** in the evidence page. Live capture requires OS elevation and remains a stretch feature. No `portable.mode` marker is used.
 
-## Installers
+## Build packages
+
+Build packages on the operating system they target. The commands below start in the repository root. First build the PyInstaller folder with `python scripts/build.py`; it creates `dist/MemSentry/` and the generated application icons needed by the installers. The script prepares its own build environment unless `--no-install` is used.
+
+### Linux: Debian package and AppImage
+
+On Ubuntu/Debian, install the system tools and libraries:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y libegl1 libgl1 libglib2.0-0 curl dpkg-dev
+```
+
+Build the portable application, download AppImage tooling, and create both the `.deb` and AppImage packages:
+
+```bash
+python scripts/build.py
+mkdir -p build release-assets
+curl --fail --location --retry 3 \
+  https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage \
+  --output build/appimagetool-x86_64.AppImage
+chmod +x build/appimagetool-x86_64.AppImage
+python scripts/package_linux.py \
+  --version "$(tr -d '[:space:]' < version.txt)" \
+  --appimagetool build/appimagetool-x86_64.AppImage
+```
+
+The packages are written to `release-assets/`. This script currently builds both formats in one run. The commands above target x86-64; the packaging script also supports ARM64 when run with matching build tools and architecture. To create a portable Linux archive as well:
+
+```bash
+version="$(tr -d '[:space:]' < version.txt)"
+tar -czf "release-assets/MemSentry-$version-linux-x86_64.tar.gz" -C dist MemSentry
+```
+
+### Windows: MSI installer and portable ZIP
+
+Build on Windows with Python 3.11–3.14 and [WiX Toolset v3](https://wixtoolset.org/):
+
+```powershell
+python scripts/build.py
+$version = (Get-Content version.txt -Raw).Trim()
+./scripts/build_msi.ps1 -Version $version
+Compress-Archive -Path dist/MemSentry `
+  -DestinationPath "release-assets/MemSentry-$version-windows-x86_64.zip" `
+  -CompressionLevel Optimal
+```
+
+The MSI and ZIP are written to `release-assets/`. Build Windows packages on Windows and Linux packages on Linux; the PyInstaller bundle and installers are platform-specific.
+
+### Python source packages
+
+To build the wheel and source archive for Python/development use (not desktop installation):
+
+```bash
+python -m pip install build
+python -m build --outdir release-assets
+```
+
+### Install release packages
 
 Tagged GitHub releases include native x86-64 packages built on their target OS:
 
@@ -124,7 +182,7 @@ Tagged GitHub releases include native x86-64 packages built on their target OS:
 - **Debian/Ubuntu:** install `memsentry_<version>_amd64.deb` with `sudo apt install ./memsentry_<version>_amd64.deb`. Launch **MemSentry** from the application menu or run `memsentry`.
 - **Other Linux distributions:** mark `MemSentry-<version>-linux-x86_64.AppImage` executable with `chmod +x` and launch it. Some distributions require FUSE support for AppImages.
 
-Linux packages are built on Ubuntu 22.04 x86-64. AppImages still depend on compatible host graphics/system libraries, and target-machine validation is recommended. Installers do not include memory images, Volatility symbol files, or optional acquisition tools. Release builds retain the portable ZIP/tar archive and Python source distributions. The Windows MSI and Linux installers are produced by the tag-triggered [release workflow](.github/workflows/release.yml); builds are platform-specific.
+Linux release packages are built on Ubuntu 22.04 x86-64. AppImages still depend on compatible host graphics/system libraries, and target-machine validation is recommended. Installers do not include memory images, Volatility symbol files, or optional acquisition tools. The Windows MSI and Linux installers are also produced by the tag-triggered [release workflow](.github/workflows/release.yml).
 
 ## Planned work
 

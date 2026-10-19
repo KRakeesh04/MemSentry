@@ -22,6 +22,7 @@ class BrandWidget(QWidget):
         self.setAccessibleName("MemSentry")
         layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        self._layout = layout
         layout.setSpacing(12)
         logo = QSvgWidget(str(LOGO_PATH), self)
         logo.setFixedSize(36, 40)
@@ -31,6 +32,7 @@ class BrandWidget(QWidget):
         font.setPointSize(16)
         font.setBold(True)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 1.0)
+        self._base_font = font
         self.wordmark.setFont(font)
         layout.addWidget(self.wordmark)
         layout.addStretch()
@@ -38,6 +40,14 @@ class BrandWidget(QWidget):
         assert isinstance(app, QApplication)
         app.paletteChanged.connect(self._apply_theme)
         self._apply_theme()
+
+    def set_compact(self, compact: bool) -> None:
+        font = QFont(self._base_font)
+        if compact:
+            font.setPointSize(12)
+            font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0.2)
+        self.wordmark.setFont(font)
+        self._layout.setSpacing(4 if compact else 12)
 
     def _apply_theme(self) -> None:
         dark = QApplication.palette().color(QPalette.ColorRole.Window).lightness() < 128

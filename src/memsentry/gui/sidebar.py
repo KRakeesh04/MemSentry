@@ -27,7 +27,8 @@ class Sidebar(QWidget):
         layout.setContentsMargins(16, 24, 16, 16)
         layout.setSpacing(8)
 
-        layout.addWidget(BrandWidget(self))
+        self.brand = BrandWidget(self)
+        layout.addWidget(self.brand)
         layout.addSpacing(16)
 
         scroll = QScrollArea(self)
@@ -46,6 +47,7 @@ class Sidebar(QWidget):
             button.setCheckable(True)
             button.setAccessibleName(name)
             button.setMinimumHeight(40)
+            button.setMinimumWidth(0)
             self.buttons.addButton(button, index)
             if name in ("Settings", "Help"):
                 layout.addWidget(button)

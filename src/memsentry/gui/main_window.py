@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QCloseEvent
+from PySide6.QtGui import QCloseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QDialog,
@@ -65,7 +65,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("MemSentry")
         self.setWindowIcon(application_icon())
         self.resize(1100, 720)
-        self.setMinimumSize(640, 480)
+        self.setMinimumSize(1100, 720)
         self.setWindowFlags(
             Qt.WindowType.Window
             | Qt.WindowType.WindowTitleHint
@@ -80,6 +80,7 @@ class MainWindow(QMainWindow):
         layout.setSpacing(0)
 
         self.sidebar = Sidebar(self.PAGE_NAMES, container)
+        self.sidebar.brand.set_compact(self.width() <= self.minimumWidth())
         layout.addWidget(self.sidebar)
 
         self.workspace = QWidget(container)
@@ -364,6 +365,12 @@ class MainWindow(QMainWindow):
 
     def _apply_theme(self) -> None:
         self.setStyleSheet(workspace_stylesheet())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        sidebar = getattr(self, "sidebar", None)
+        if sidebar is not None:
+            sidebar.brand.set_compact(self.width() <= self.minimumWidth())
 
     def closeEvent(self, event: QCloseEvent) -> None:
         if self.analysis_worker is not None:

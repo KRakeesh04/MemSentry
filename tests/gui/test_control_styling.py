@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from memsentry.gui.branding import BrandWidget
 from memsentry.gui.controls import ThemedComboBox
 from memsentry.gui.theme import workspace_stylesheet
 
@@ -35,6 +36,20 @@ def test_combo_wheel_is_ignored_without_changing_selection(qtbot):
     QApplication.sendEvent(combo, event)
     assert combo.currentIndex() == initial_index
     assert not event.isAccepted()
+
+
+def test_brand_wordmark_compacts_only_when_requested(qtbot):
+    brand = BrandWidget()
+    qtbot.addWidget(brand)
+    brand.set_compact(False)
+    assert brand.wordmark.font().pointSize() == 16
+    assert brand._layout.spacing() == 12
+    brand.set_compact(True)
+    assert brand.wordmark.font().pointSize() == 12
+    assert brand._layout.spacing() == 4
+    brand.set_compact(False)
+    assert brand.wordmark.font().pointSize() == 16
+    assert brand._layout.spacing() == 12
 
 
 @pytest.mark.parametrize("dark", [False, True])

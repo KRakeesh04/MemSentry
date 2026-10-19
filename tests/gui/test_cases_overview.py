@@ -13,13 +13,17 @@ from memsentry.gui.pages.cases import CasesPage
 from memsentry.gui.pages.evidence import EvidencePage
 from memsentry.gui.pages.overview import OverviewPage
 from memsentry.models.analysis_run import AnalysisRunCreate, HostOS
+from memsentry.models.artifact import ArtifactCreate
 from memsentry.models.case import CaseStatus
 from memsentry.models.evidence import IntegrityStatus
 from memsentry.models.finding import FindingCreate, FindingSeverity
+from memsentry.models.plugin_run import PluginRunCreate
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
+from memsentry.storage.repositories.artifact_repository import ArtifactRepository
 from memsentry.storage.repositories.case_repository import CaseRepository
 from memsentry.storage.repositories.evidence_repository import EvidenceRepository
 from memsentry.storage.repositories.finding_repository import FindingRepository
+from memsentry.storage.repositories.plugin_run_repository import PluginRunRepository
 
 
 def test_recent_cases_restore_access_order_and_fixed_size(qtbot, tmp_path, monkeypatch):
@@ -91,6 +95,51 @@ def test_run_picker_formats_uuid_identifiers(qtbot, tmp_path, page_type):
     assert page.run_combo.count() == 2
     assert str(run.id)[:8] in page.run_combo.itemText(1)
     assert page.run_combo.itemData(1).id == run.id
+
+
+def test_artifacts_page_only_shows_artifacts_for_active_case(qtbot, tmp_path):
+    source = tmp_path / "synthetic.mem"
+    source.write_bytes(b"synthetic memory only")
+    result = IntakeService().run(
+        IntakeRequest(tmp_path, "CASE-1", "Analyzed case", source),
+        lambda *_: None,
+        Event(),
+    )
+    database = workspace_database(tmp_path)
+    analyzed_case = CaseRepository(database).get_by_id(result.evidence.case_id)
+    run = AnalysisRunRepository(database).create(
+        AnalysisRunCreate(
+            evidence_id=result.evidence.id,
+            application_version="test",
+            volatility_version="test",
+            host_os=HostOS.LINUX,
+        )
+    )
+    plugin_run = PluginRunRepository(database).create(
+        PluginRunCreate(analysis_run_id=run.id, plugin_name="linux.pslist.PsList")
+    )
+    ArtifactRepository(database).create(
+        ArtifactCreate(
+            analysis_run_id=run.id,
+            plugin_run_id=plugin_run.id,
+            artifact_type="process",
+            pid=42,
+            original_data={"normalized": {"process_name": "synthetic"}},
+            provenance={"source_plugin": "linux.pslist.PsList"},
+        )
+    )
+    fresh_case = create_case(str(tmp_path), "CASE-2", "Fresh case", "")
+
+    page = ArtifactsPage()
+    qtbot.addWidget(page)
+    page.open_case(str(tmp_path), fresh_case)
+    assert page.all_artifacts == []
+    assert page.table.rowCount() == 0
+    assert page.total_val.text() == "0"
+
+    page.open_case(str(tmp_path), analyzed_case)
+    assert len(page.all_artifacts) == 1
+    assert page.table.rowCount() == 1
 
 
 @pytest.fixture(autouse=True)

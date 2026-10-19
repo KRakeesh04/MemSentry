@@ -116,6 +116,20 @@ class ArtifactRepository:
             ).fetchall()
         return [self._row_to_artifact(row) for row in rows]
 
+    def list_by_case(self, case_id: UUID) -> list[Artifact]:
+        """Return artifacts from analysis runs belonging to one case."""
+        with self.database.connection() as connection:
+            rows = connection.execute(
+                """SELECT artifacts.*
+                FROM artifacts
+                JOIN analysis_runs ON analysis_runs.id = artifacts.analysis_run_id
+                JOIN evidence ON evidence.id = analysis_runs.evidence_id
+                WHERE evidence.case_id = ?
+                ORDER BY artifacts.created_at, artifacts.id""",
+                (str(case_id),),
+            ).fetchall()
+        return [self._row_to_artifact(row) for row in rows]
+
     def _list(self, column: str, value: UUID) -> list[Artifact]:
         with self.database.connection() as connection:
             rows = connection.execute(

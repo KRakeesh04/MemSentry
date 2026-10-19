@@ -347,7 +347,7 @@ class ArtifactsPage(QScrollArea):
 
     def refresh(self) -> None:
         """Fetch artifacts from database and re-render layout."""
-        if not self.database:
+        if not self.database or not self.case:
             self.all_artifacts = []
             self.filtered_artifacts = []
             self._render_artifacts([])
@@ -359,7 +359,9 @@ class ArtifactsPage(QScrollArea):
 
         try:
             repo = ArtifactRepository(self.database)
-            self.all_artifacts = repo.list_all()
+            # The workspace database contains artifacts from every case. Always
+            # scope the page to the active case before applying UI filters.
+            self.all_artifacts = repo.list_by_case(self.case.id)
             self._update_type_combo()
             self.message.setText("")
         except Exception as exc:

@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import base64
-from dataclasses import dataclass
-from datetime import UTC, datetime
 import hashlib
 import json
 import logging
-import os
+from contextlib import suppress
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import platformdirs
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
-import platformdirs
 
 logger = logging.getLogger(__name__)
 
@@ -69,10 +69,8 @@ class ReportSigningService:
         )
 
         private_key_path.write_bytes(private_pem)
-        try:
-            os.chmod(private_key_path, 0o600)
-        except OSError:
-            pass
+        with suppress(OSError):
+            private_key_path.chmod(0o600)
 
         public_key_path.write_bytes(public_pem)
         logger.info("Generated new report signing key pair in %s", self.key_dir)
@@ -84,9 +82,9 @@ class ReportSigningService:
         if public_key_path.is_file():
             try:
                 pem_bytes = public_key_path.read_bytes()
-                key = serialization.load_pem_public_key(pem_bytes)
-                if isinstance(key, ed25519.Ed25519PublicKey):
-                    raw_pub = key.public_bytes(
+                public_key = serialization.load_pem_public_key(pem_bytes)
+                if isinstance(public_key, ed25519.Ed25519PublicKey):
+                    raw_pub = public_key.public_bytes(
                         encoding=serialization.Encoding.Raw,
                         format=serialization.PublicFormat.Raw,
                     )
@@ -98,9 +96,9 @@ class ReportSigningService:
         if private_key_path.is_file():
             try:
                 pem_bytes = private_key_path.read_bytes()
-                key = serialization.load_pem_private_key(pem_bytes, password=None)
-                if isinstance(key, ed25519.Ed25519PrivateKey):
-                    pub_key = key.public_key()
+                private_key = serialization.load_pem_private_key(pem_bytes, password=None)
+                if isinstance(private_key, ed25519.Ed25519PrivateKey):
+                    pub_key = private_key.public_key()
                     raw_pub = pub_key.public_bytes(
                         encoding=serialization.Encoding.Raw,
                         format=serialization.PublicFormat.Raw,

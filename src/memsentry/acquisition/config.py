@@ -5,7 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-_PATH_VARIABLES = {"MEMSENTRY_AVML", "MEMSENTRY_WINPMEM", "MEMSENTRY_OSXPMEM"}
+_PATH_VARIABLES = {
+    "MEMSENTRY_AVML", "MEMSENTRY_WINPMEM", "MEMSENTRY_OSXPMEM",
+    "MEMSENTRY_WORKSPACE", "MEMSENTRY_SYMBOLS", "MEMSENTRY_RULES",
+}
 
 
 def load_environment_file(path: str | Path, *, override: bool = False) -> None:

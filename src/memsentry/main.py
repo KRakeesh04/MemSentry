@@ -4,7 +4,7 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from memsentry.app.bootstrap import load_portable_configuration
+from memsentry.app.bootstrap import configure_portable_settings, load_portable_configuration
 from memsentry.gui.branding import application_icon
 from memsentry.gui.main_window import MainWindow
 from memsentry.gui.theme import apply_saved_theme
@@ -20,12 +20,13 @@ def main() -> None:
     application.setApplicationName("MemSentry")
     application.setDesktopFileName("memsentry")
     application.setWindowIcon(application_icon())
-    apply_saved_theme(application)
     try:
         load_portable_configuration()
+        configure_portable_settings()
     except (OSError, ValueError) as exc:
         QMessageBox.critical(None, "Configuration could not be loaded", str(exc))
         return
+    apply_saved_theme(application)
     window = MainWindow()
     window.show()
     sys.exit(application.exec())

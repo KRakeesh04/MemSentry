@@ -1,0 +1,6 @@
+MEMSENTRY_PORTABLE=1
+MEMSENTRY_WORKSPACE=.
+MEMSENTRY_SYMBOLS=./symbols
+MEMSENTRY_RULES=./Rules
+MEMSENTRY_AVML=./dump_tools/avml
+MEMSENTRY_WINPMEM=./dump_tools/go-winpmem_amd64_1.0-rc2_signed.exe

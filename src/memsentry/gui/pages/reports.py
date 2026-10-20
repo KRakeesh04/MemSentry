@@ -27,6 +27,7 @@ from memsentry.models.case import Case
 from memsentry.models.report import ReportOptions
 from memsentry.reports.exporters.html_exporter import HtmlReportExporter
 from memsentry.reports.exporters.json_exporter import JsonReportExporter
+from memsentry.reports.signer import ReportSigningService
 from memsentry.storage.database import Database
 from memsentry.storage.repositories.analysis_run_repository import AnalysisRunRepository
 from memsentry.storage.repositories.artifact_repository import ArtifactRepository
@@ -128,10 +129,12 @@ class ReportsPage(QScrollArea):
         self.chk_plugins = QCheckBox("Plugin execution summary")
         self.chk_artifacts = QCheckBox("Artifacts (Warning: can be large)")
         self.chk_workflow = QCheckBox("Workflow and audit history")
+        self.chk_sign = QCheckBox("Digitally sign exported reports")
 
         form_layout.addWidget(self.chk_plugins)
         form_layout.addWidget(self.chk_artifacts)
         form_layout.addWidget(self.chk_workflow)
+        form_layout.addWidget(self.chk_sign)
 
         layout.addWidget(self.form)
 
@@ -168,6 +171,12 @@ class ReportsPage(QScrollArea):
             self.output_dir_input.setText(default_out)
         elif self.workspace_path and not self.output_dir_input.text().strip():
             self.output_dir_input.setText(self.workspace_path)
+
+        sign_default = str(qsettings.value("reporting/sign_reports", "false")).lower() in (
+            "true",
+            "1",
+        )
+        self.chk_sign.setChecked(sign_default)
 
     def _browse_output_dir(self) -> None:
         current = self.output_dir_input.text().strip() or self.workspace_path
@@ -249,16 +258,25 @@ class ReportsPage(QScrollArea):
             QApplication.processEvents()
 
             generated_files: list[Path] = []
+            signer = ReportSigningService() if self.chk_sign.isChecked() else None
+
             if is_html:
                 HtmlReportExporter().export(report_data, html_path)
                 generated_files.append(html_path)
+                if signer:
+                    sig_path = signer.sign_file(html_path)
+                    generated_files.append(sig_path)
             if is_json:
                 JsonReportExporter().export(report_data, json_path)
                 generated_files.append(json_path)
+                if signer:
+                    sig_path = signer.sign_file(json_path)
+                    generated_files.append(sig_path)
 
             file_list = "\n".join(f"• {p.name}" for p in generated_files)
             format_desc = "HTML & JSON" if is_both else ("HTML" if is_html else "JSON")
-            self.status_label.setText(f"✓ {format_desc} report(s) saved to {output_dir.name}")
+            signed_suffix = " (digitally signed)" if signer else ""
+            self.status_label.setText(f"✓ {format_desc} report(s){signed_suffix} saved to {output_dir.name}")
             QMessageBox.information(
                 self,
                 "Report Generated",

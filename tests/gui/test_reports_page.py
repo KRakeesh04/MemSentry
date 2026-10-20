@@ -223,7 +223,6 @@ def test_reports_page_verify_action(qtbot, tmp_path, monkeypatch):
 
     dialog_captured = []
     from memsentry.gui.details_dialog import DetailsDialog
-    orig_exec = DetailsDialog.exec
     def mock_exec(self):
         dialog_captured.append(self)
         return DetailsDialog.DialogCode.Accepted

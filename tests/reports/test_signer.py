@@ -5,9 +5,7 @@ import hashlib
 import json
 from pathlib import Path
 
-import pytest
 from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import ed25519
 
 from memsentry.reports.signer import ReportSigningService, verify_file
 
@@ -22,7 +20,7 @@ def test_key_generation_and_reuse(tmp_path: Path):
     assert service.get_local_key_fingerprint() is None
 
     # First access generates pair
-    priv1, pub1 = service.get_or_create_key_pair()
+    _priv1, pub1 = service.get_or_create_key_pair()
     assert (key_dir / "report_signing_key.pem").exists()
     assert (key_dir / "report_signing_key.pub").exists()
 
@@ -31,7 +29,7 @@ def test_key_generation_and_reuse(tmp_path: Path):
 
     # Subsequent access reuses the same key
     service2 = ReportSigningService(key_dir=key_dir)
-    priv2, pub2 = service2.get_or_create_key_pair()
+    _priv2, pub2 = service2.get_or_create_key_pair()
     fp2 = service2.get_local_key_fingerprint()
 
     assert fp1 == fp2

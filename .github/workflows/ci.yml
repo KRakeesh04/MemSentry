@@ -64,4 +64,5 @@ jobs:
         if: runner.os == 'Windows'
         env:
           QT_QPA_PLATFORM: offscreen
+          QT_SCALE_FACTOR: "1"
         run: python -m pytest --test-os=windows -q

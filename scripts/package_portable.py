@@ -19,6 +19,27 @@ def sha256(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def add_to_zip(archive: zipfile.ZipFile, path: Path, arcname: Path) -> None:
+    """Store executable mode bits for Unix launchers even on Windows builders."""
+    info = zipfile.ZipInfo(arcname.as_posix())
+    info.compress_type = zipfile.ZIP_DEFLATED
+    if path.is_dir():
+        mode = 0o40755
+        info.filename += "/"
+        data = b""
+    elif arcname == Path("MemSentry/Linux/MemSentry"):
+        mode = 0o100755
+        data = path.read_bytes()
+    elif arcname.name in {"Start-Linux.sh", "avml"}:
+        mode = 0o100755
+        data = path.read_bytes()
+    else:
+        mode = 0o100644
+        data = path.read_bytes()
+    info.external_attr = mode << 16
+    archive.writestr(info, data)
+
+
 def build_portable(
     linux_bundle: Path,
     windows_bundle: Path,
@@ -94,7 +115,7 @@ def build_portable(
         )
         with zipfile.ZipFile(archive, "x", compression=zipfile.ZIP_DEFLATED) as zipped:
             for path in sorted(root.rglob("*")):
-                zipped.write(path, path.relative_to(root.parent))
+                add_to_zip(zipped, path, path.relative_to(root.parent))
     return archive
 
 

@@ -130,7 +130,7 @@ class AnalysisDialog(QDialog):
         layout.addLayout(rules_row)
         from memsentry.resource_paths import resource_directory
 
-        bundled = resource_directory() / "yara"
+        bundled = Path(os.environ.get("MEMSENTRY_RULES", str(resource_directory() / "yara")))
         self.rule_paths = sorted(bundled.glob("*.yar")) + sorted(bundled.glob("*.yara"))
         self._update_rules_display()
         yara_available = importlib.util.find_spec("yara") is not None

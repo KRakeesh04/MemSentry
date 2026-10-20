@@ -1,0 +1,18 @@
+{
+  "tools": [
+    {
+      "file": "avml",
+      "sha256": "a67010b08af2edf5a04d2f051a133e0d8e30853c308f055b8335e759609d6dc9",
+      "origin": "User-supplied MemSentryCases/dump_tools/avml",
+      "project": "https://github.com/microsoft/avml",
+      "platform": "linux-x86_64"
+    },
+    {
+      "file": "go-winpmem_amd64_1.0-rc2_signed.exe",
+      "sha256": "86691bb4af2c17dd9ec4834c04a99ad51e04f780a07d1b05bc382a5d1892e0c4",
+      "origin": "User-supplied MemSentryCases/dump_tools/go-winpmem_amd64_1.0-rc2_signed.exe",
+      "project": "https://github.com/Velocidex/WinPmem",
+      "platform": "windows-x86_64"
+    }
+  ]
+}

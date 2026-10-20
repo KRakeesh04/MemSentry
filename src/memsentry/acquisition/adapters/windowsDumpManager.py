@@ -43,7 +43,7 @@ class WindowsWinPmemAdapter(DumpAdapter):
         return self._executable
 
     def build_command(self, output_path: Path) -> tuple[str, ...]:
-        prefix = (str(self.executable.resolve()),)
+        prefix: tuple[str, ...] = (str(self.executable.resolve()),)
         if self.acquire_subcommand:
             prefix += ("acquire",)
         return (*prefix, str(output_path))

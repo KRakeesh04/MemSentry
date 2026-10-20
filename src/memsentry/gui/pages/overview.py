@@ -98,6 +98,7 @@ class OverviewPage(QScrollArea):
         self.setWidgetResizable(True)
         self.setFrameShape(QFrame.Shape.NoFrame)
         content = QWidget()
+        content.setMinimumSize(0, 0)
         layout = QVBoxLayout(content)
         layout.setContentsMargins(32, 32, 32, 32)
         layout.setSpacing(20)

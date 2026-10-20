@@ -37,10 +37,13 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a python -m pytest
+        run: xvfb-run -a python -m pytest --test-os=linux
       - name: Run tests on Windows
         if: matrix.os == 'windows-latest'
-        run: python -m pytest
+        env:
+          QT_QPA_PLATFORM: windows
+          QT_SCALE_FACTOR: "1"
+        run: python -m pytest --test-os=windows
 
   version-check:
     name: Validate release version
@@ -146,6 +149,15 @@ jobs:
           python -m pip install --no-deps -e .
       - name: Build portable application bundle
         run: python scripts/build.py --no-install
+      - name: Archive application for combined portable kit
+        shell: bash
+        run: tar -czf portable-input.tar.gz -C dist MemSentry
+      - name: Upload portable kit input
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-input-${{ matrix.platform }}
+          path: portable-input.tar.gz
+          retention-days: 1
       - name: Build Debian package, AppImage, and Linux archive
         if: runner.os == 'Linux'
         env:
@@ -178,9 +190,43 @@ jobs:
           name: memsentry-${{ matrix.platform }}-${{ needs.version-check.outputs.version }}
           path: release-assets/*
 
+  portable-kit:
+    name: Assemble configured portable kit
+    needs: [version-check, build]
+    if: github.actor == github.repository_owner && needs.version-check.outputs.should_release == 'true'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-input-linux-x86_64
+          path: portable-input/linux
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-input-windows-x86_64
+          path: portable-input/windows
+      - name: Assemble Linux, Windows, tools, and workspace
+        env:
+          VERSION: ${{ needs.version-check.outputs.version }}
+        run: |
+          tar -xzf portable-input/linux/portable-input.tar.gz -C portable-input/linux
+          tar -xzf portable-input/windows/portable-input.tar.gz -C portable-input/windows
+          python scripts/package_portable.py \
+            --linux-bundle portable-input/linux/MemSentry \
+            --windows-bundle portable-input/windows/MemSentry \
+            --version "$VERSION"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memsentry-portable-kit-${{ needs.version-check.outputs.version }}
+          path: release-assets/*-portable-kit-x86_64.zip
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [version-check, source-package, build]
+    needs: [version-check, source-package, build, portable-kit]
     if: github.actor == github.repository_owner && needs.version-check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -200,6 +246,7 @@ jobs:
 
             | File | Use |
             | --- | --- |
+            | `MemSentry-<version>-portable-kit-x86_64.zip` | Complete Linux + Windows kit with acquisition tools, YARA rules, and a configured workspace. Extract the entire ZIP to a writable folder. Run `Start-Windows.cmd` on Windows or `sh Start-Linux.sh` on Linux. |
             | `MemSentry-<version>-windows-x86_64.msi` | Windows installer. Run it and follow the setup prompts; launch MemSentry from the Start menu. |
             | `MemSentry-<version>-windows-x86_64.zip` | Windows portable build. Extract the whole folder and run `MemSentry.exe` inside it. |
             | `memsentry_<version>_amd64.deb` | Debian/Ubuntu installer. Run `sudo apt install ./memsentry_<version>_amd64.deb`; then launch from the app menu or run `memsentry`. |
@@ -213,7 +260,9 @@ jobs:
             3. In **Overview**, choose **Analyze evidence**, select the image OS, plugins, symbols root, and optional YARA rules.
             4. Review the plugin results, **Artifacts**, **Findings**, and **Activity**.
 
-            Keep the original memory image unchanged and retain its SHA-256 hash for evidence verification. Linux packages target x86-64; AppImage may require FUSE on some distributions. The Python wheel and source archive are for Python/development use, not desktop installation. Optional acquisition tools and Volatility symbol files are not bundled.
+            The complete portable kit automatically loads `MemSentryCases/env`, selects `MemSentryCases` as the workspace, and keeps preferences there. Move the entire `MemSentry` folder together. It includes the approved local AVML and WinPmem copies and a SHA-256 manifest. Symbols must be supplied for the target image; the kit creates an empty symbols folder. Live capture still requires OS elevation and a compatible host.
+
+            Keep the original memory image unchanged and retain its SHA-256 hash for evidence verification. Linux packages target x86-64 and require compatible system libraries; AppImage may require FUSE on some distributions. The Python wheel and source archive are for Python/development use, not desktop installation. Acquisition tools are included only in the complete portable kit.
 
             ---
 

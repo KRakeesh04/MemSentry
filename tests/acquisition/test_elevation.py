@@ -8,6 +8,8 @@ import pytest
 from memsentry.acquisition.adapters.base import AcquisitionError
 from memsentry.acquisition.adapters.linuxDumpManager import LinuxAvmlAdapter
 
+pytestmark = pytest.mark.linux
+
 
 @pytest.fixture
 def adapter(tmp_path, monkeypatch):

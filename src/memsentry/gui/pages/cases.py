@@ -1,5 +1,6 @@
 """Search, create, and open persisted workspace cases."""
 
+import os
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QObject, QSettings, Qt, Signal
@@ -71,7 +72,10 @@ class CasesPage(QScrollArea):
         workspace_row = QHBoxLayout()
 
         self.workspace = QLineEdit(
-            str(QSettings("MemSentry", "MemSentry").value("intake/workspace", ""))
+            os.environ.get(
+                "MEMSENTRY_WORKSPACE",
+                str(QSettings("MemSentry", "MemSentry").value("intake/workspace", "")),
+            )
         )
         self.workspace.setPlaceholderText("Workspace folder")
         self.workspace.setAccessibleName("Case workspace")

@@ -33,19 +33,6 @@ htmlcov/
 *.log
 logs/
 
-# Runtime
-runtime/cache/
-runtime/temp/
-
-# Ignore generated case data
-runtime/cases/*
-
-# Keep folder structure
-!runtime/cases/.gitkeep
-!runtime/cache/.gitkeep
-!runtime/temp/.gitkeep
-!runtime/logs/.gitkeep
-
 # SQLite
 *.sqlite
 *.sqlite3

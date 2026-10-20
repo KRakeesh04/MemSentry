@@ -1,5 +1,6 @@
 """Memory-image import and live acquisition backed by the intake service."""
 
+import os
 import platform
 from pathlib import Path
 from threading import Event
@@ -122,7 +123,9 @@ class EvidencePage(QScrollArea):
         form = QFormLayout()
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setSpacing(12)
-        self.workspace = QLineEdit(str(self.settings.value("intake/workspace", "")))
+        self.workspace = QLineEdit(os.environ.get(
+            "MEMSENTRY_WORKSPACE", str(self.settings.value("intake/workspace", ""))
+        ))
         self.workspace.setPlaceholderText("Folder for case database, captures, and audit records")
         self.case_number = QLineEdit(generate_case_number())
         self.case_number.setToolTip("Suggested automatically; you can enter your own case number.")

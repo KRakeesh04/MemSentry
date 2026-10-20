@@ -50,6 +50,7 @@ def test_workflow_rail_layout(qtbot, qapp, tmp_path, dark):
     qapp.setPalette(palette)
     try:
         host = QWidget()
+        host.setMinimumSize(0, 0)
         qtbot.addWidget(host)
         host.setObjectName("workspace")
         layout = QVBoxLayout(host)
@@ -86,9 +87,9 @@ def test_workflow_rail_layout(qtbot, qapp, tmp_path, dark):
         assert "Expected:" in widget.gates[2].toolTip()
         host.grab().save(str(tmp_path / "workflow.png"))
         host.resize(520, 240)
-        # Desktop window managers deliver resize/layout updates asynchronously.
+        # Process the resize with the host unconstrained by its layout size hint.
         qtbot.waitUntil(
-            lambda: host.width() <= 520
+            lambda: host.width() == 520
             and widget.rail_scroll.horizontalScrollBar().maximum() > 0,
             timeout=5000,
         )

@@ -1,5 +1,6 @@
 import ctypes
 import io
+import os
 import subprocess
 from types import SimpleNamespace
 
@@ -12,6 +13,8 @@ from memsentry.acquisition.windows_elevation import (
     ShellExecuteInfo,
     WindowsAPI,
 )
+
+pytestmark = pytest.mark.windows
 
 
 def native_api(launch):
@@ -151,7 +154,12 @@ def test_windows_adapter_uses_uac_without_elevating_gui(tmp_path, monkeypatch, m
             (str(executable), "acquire", str(output))
             if modern else (str(executable), str(output))
         )
-        assert not output.exists()
+        if os.name == "nt":
+            # Windows pre-creates the output so the elevated user can write it
+            # without changing ownership; other hosts don't reserve a file.
+            assert output.is_file() and output.stat().st_size == 0
+        else:
+            assert not output.exists()
         output.write_bytes(b"fake capture")
         return process
 

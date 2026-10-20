@@ -35,15 +35,16 @@ Linux:
 QT_QPA_PLATFORM=offscreen python -m pytest --test-os=linux -q
 ```
 
-Windows PowerShell:
+Windows PowerShell (use the native Qt platform plugin):
 
 ```powershell
-$env:QT_QPA_PLATFORM = "offscreen"
+$env:QT_QPA_PLATFORM = "windows"
 python -m pytest --test-os=windows -q
 ```
 
-Linux needs the Qt system libraries listed in the README. CI also installs Xvfb
-and wraps the Linux command with `xvfb-run -a`.
+Linux needs the Qt system libraries listed in the README. Linux CI installs Xvfb
+and wraps the Linux command with `xvfb-run -a`. Windows CI uses Qt's native
+Windows platform plugin so resize and scrollbar tests exercise native geometry.
 
 ## Focused checks
 
@@ -56,7 +57,8 @@ python -m ruff check
 python -m mypy src
 ```
 
-Set `QT_QPA_PLATFORM=offscreen` for focused checks that create GUI widgets.
+Set `QT_QPA_PLATFORM=offscreen` for focused headless checks that create GUI
+widgets. Windows geometry checks should use `QT_QPA_PLATFORM=windows`.
 
 Portable configuration tests cover relative paths after moving the kit, workspace
 and rule selection, and settings placement. Packaging tests use synthetic

@@ -41,7 +41,7 @@ jobs:
       - name: Run tests on Windows
         if: matrix.os == 'windows-latest'
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: windows
           QT_SCALE_FACTOR: "1"
         run: python -m pytest --test-os=windows
 

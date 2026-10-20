@@ -107,10 +107,15 @@ class DumpAdapter(ABC):
         log_path = output_path.with_suffix(output_path.suffix + ".log")
         log = log_path.open("xb")
         try:
-            if elevated and self.target_os == "linux":
-                # AVML truncates the destination. Reserve it as this user so a
-                # root-owned, restrictive file does not prevent later hashing.
-                descriptor = os.open(output_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            if elevated and self.target_os in {"linux", "windows"}:
+                # Reserve the destination as the current MemSentry user before the
+                # acquisition tool is elevated. This preserves user access to the
+                # completed image so it can be verified and hashed afterwards.
+                descriptor = os.open(
+                    output_path,
+                    os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+                    0o600,
+                )
                 os.close(descriptor)
             process = self.start_process(command, log)
         except Exception as exc:

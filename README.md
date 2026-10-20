@@ -68,6 +68,10 @@ Supply matching Volatility symbols under the selected root's `windows/` or `linu
 
 ## Developer checks
 
+See the [testing guide](docs/TESTING-GUIDE.md) for OS-specific commands, portable-kit
+checks, and CI coverage. Plain pytest runs shared tests and automatically skips
+tests marked for a different host OS.
+
 ```bash
 python -m pytest
 python -m pytest --cov=memsentry --cov-report=term-missing
@@ -79,7 +83,7 @@ python -m mypy src
 For headless Linux tests:
 
 ```bash
-QT_QPA_PLATFORM=offscreen python -m pytest
+QT_QPA_PLATFORM=offscreen python -m pytest --test-os=linux
 ```
 
 Use synthetic or authorised test data. Keep memory images, case output, and credentials out of commits. Follow [AGENTS.md](AGENTS.md) when changing analysis or evidence-handling code.

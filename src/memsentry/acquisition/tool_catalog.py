@@ -21,10 +21,12 @@ def available_tools() -> list[ToolOption]:
     options = []
     for name, target, variable, binary in (
         ("AVML", "Linux", "MEMSENTRY_AVML", "avml"),
-        ("WinPmem mini", "Windows", "MEMSENTRY_WINPMEM", "winpmem_mini_x64.exe"),
+        ("WinPmem", "Windows", "MEMSENTRY_WINPMEM", "winpmem_mini_x64.exe"),
     ):
         configured = os.environ.get(variable)
         discovered = configured or which(binary)
+        if not discovered and target == "Windows":
+            discovered = which("winpmem.exe") or which("winpmem")
         path = Path(discovered).expanduser().resolve() if discovered else None
         usable = (
             path is not None and path.is_file() and (os.name == "nt" or os.access(path, os.X_OK))

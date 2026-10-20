@@ -142,12 +142,16 @@ def test_copy_checkbox_receives_light_theme_click_in_application(qtbot, qapp):
 
 
 @pytest.mark.parametrize("custom", [False, True])
-def test_tool_choice_is_forwarded_to_backend(qtbot, tmp_path, monkeypatch, custom):
+@pytest.mark.parametrize(
+    "host, profile, modern",
+    [("Linux", 0, None), ("Windows", 0, None), ("Windows", 1, True), ("Windows", 2, False)],
+)
+def test_tool_choice_is_forwarded_to_backend(qtbot, tmp_path, monkeypatch, custom, host, profile, modern):
     monkeypatch.setattr(
         "memsentry.gui.pages.evidence.QSettings",
         lambda *_: QSettings(str(tmp_path / "prefs.ini"), QSettings.Format.IniFormat),
     )
-    monkeypatch.setattr("memsentry.acquisition.tool_catalog.platform.system", lambda: "Linux")
+    monkeypatch.setattr("memsentry.acquisition.tool_catalog.platform.system", lambda: host)
     configured = tmp_path / "configured-avml"
     configured.write_bytes(b"mock")
     configured.chmod(0o700)
@@ -155,6 +159,7 @@ def test_tool_choice_is_forwarded_to_backend(qtbot, tmp_path, monkeypatch, custo
     chosen.write_bytes(b"mock")
     chosen.chmod(0o700)
     monkeypatch.setenv("MEMSENTRY_AVML", str(configured))
+    monkeypatch.setenv("MEMSENTRY_WINPMEM", str(configured))
     monkeypatch.setattr("memsentry.gui.pages.evidence.IntakeWorker.start", lambda _: None)
     page = EvidencePage()
     qtbot.addWidget(page)
@@ -162,10 +167,13 @@ def test_tool_choice_is_forwarded_to_backend(qtbot, tmp_path, monkeypatch, custo
     page.case_number.setText("TEST")
     page.case_name.setText("Test")
     page.mode_buttons.button(1).click()
+    page.profile.setCurrentIndex(profile)
     page.authorized.setChecked(True)
     page.tool.setText(str(chosen))
     if custom:
         page.tool_choices.button(page.custom_tool_id).click()
     page.start.click()
     assert page.worker.request.tool_path == (chosen if custom else configured)
-    assert page.worker.request.avml_modern is True
+    if host == "Linux":
+        assert page.worker.request.avml_modern is True
+    assert page.worker.request.winpmem_modern is modern

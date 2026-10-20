@@ -227,7 +227,7 @@ class EvidencePage(QScrollArea):
             self.tool_choices.addButton(card, index)
             live_form.addWidget(card)
         custom = ChoiceCard(
-            "Choose another executable", "Browse for AVML on Linux or WinPmem mini on Windows"
+            "Choose another executable", "Browse for AVML on Linux or WinPmem on Windows"
         )
         custom.setEnabled(platform.system() in ("Linux", "Windows"))
         self.custom_tool_id = len(self.configured_tools)
@@ -257,10 +257,20 @@ class EvidencePage(QScrollArea):
             "Use Current AVML for modern releases. "
             "Choose Legacy AVML only for older AVML binaries."
         )
-        if platform.system() == "Linux":
+        if platform.system() == "Windows":
+            self.profile.clear()
+            self.profile.addItems(["Automatic (mini = legacy)", "Current WinPmem", "Legacy WinPmem"])
+            self.profile.setToolTip(
+                "Automatic uses output-only for filenames containing 'mini', otherwise acquire output. "
+                "Select Current (acquire output) or Legacy (output only) for renamed binaries."
+            )
+        if platform.system() in ("Linux", "Windows"):
             profile_form = QFormLayout()
             profile_form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
-            profile_form.addRow("AVML version", self.profile)
+            profile_form.addRow(
+                "WinPmem version" if platform.system() == "Windows" else "AVML version",
+                self.profile,
+            )
             live_form.addLayout(profile_form)
         else:
             self.profile.setParent(self.live_fields)
@@ -551,6 +561,11 @@ class EvidencePage(QScrollArea):
             evidence_os=os_values[self.os_choice.currentIndex()],
             tool_path=tool_path,
             avml_modern=self.profile.currentIndex() == 0,
+            winpmem_modern=(
+                (None, True, False)[self.profile.currentIndex()]
+                if platform.system() == "Windows"
+                else None
+            ),
             copy_into_case=not live and self.copy_into_case.isChecked(),
         )
         self.settings.setValue("intake/workspace", str(request.workspace))

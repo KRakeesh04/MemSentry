@@ -21,7 +21,28 @@ def native_api(launch):
     return api
 
 
-def test_native_launch_requests_uac_and_quotes_unicode_paths(tmp_path):
+@pytest.mark.parametrize(
+    "filename, override, modern",
+    [
+        ("winPmem.exe", None, True),
+        ("winpmem_mini_x64.exe", None, False),
+        ("WINPMEM_MINI_x86.exe", None, False),
+        ("winpmem.exe", False, False),
+        ("renamed_mini.exe", True, True),
+    ],
+)
+def test_windows_command_versions(tmp_path, filename, override, modern):
+    executable = tmp_path / "工具 with spaces" / filename
+    output = tmp_path / "case with spaces" / "memory.raw"
+    adapter = WindowsWinPmemAdapter(executable, acquire_subcommand=override)
+    expected = (str(executable), "acquire", str(output)) if modern else (
+        str(executable), str(output)
+    )
+    assert adapter.build_command(output) == expected
+
+
+@pytest.mark.parametrize("modern", [True, False])
+def test_native_launch_requests_uac_and_quotes_unicode_paths(tmp_path, modern):
     executable = tmp_path / "工具 with spaces" / "winpmem.exe"
     output = tmp_path / "case with spaces" / "memory.raw"
     observed = {}
@@ -39,10 +60,11 @@ def test_native_launch_requests_uac_and_quotes_unicode_paths(tmp_path):
         return True
 
     api = native_api(launch)
-    assert api.launch((str(executable), str(output))) == 123
+    arguments = ["acquire", str(output)] if modern else [str(output)]
+    assert api.launch((str(executable), *arguments)) == 123
     assert observed["verb"] == "runas"
     assert observed["file"] == str(executable)
-    assert observed["parameters"] == subprocess.list2cmdline([str(output)])
+    assert observed["parameters"] == subprocess.list2cmdline(arguments)
     assert observed["mask"] & 0x40
     assert observed["size"] == ctypes.sizeof(ShellExecuteInfo)
 
@@ -97,11 +119,12 @@ def test_native_wait_handles_running_and_exit_code():
     assert api.exit_code(123, 0) == 7
 
 
-def test_windows_adapter_uses_uac_without_elevating_gui(tmp_path, monkeypatch):
+@pytest.mark.parametrize("modern", [True, False])
+def test_windows_adapter_uses_uac_without_elevating_gui(tmp_path, monkeypatch, modern):
     executable = tmp_path / "winpmem.exe"
     executable.write_bytes(b"mock executable")
     executable.chmod(0o700)
-    adapter = WindowsWinPmemAdapter(executable)
+    adapter = WindowsWinPmemAdapter(executable, acquire_subcommand=modern)
     monkeypatch.setattr(
         "memsentry.acquisition.adapters.windowsDumpManager.require_platform", lambda *_: None
     )
@@ -124,7 +147,10 @@ def test_windows_adapter_uses_uac_without_elevating_gui(tmp_path, monkeypatch):
     process = Process()
 
     def launch(command, log):
-        assert command == (str(executable), str(output))
+        assert command == (
+            (str(executable), "acquire", str(output))
+            if modern else (str(executable), str(output))
+        )
         assert not output.exists()
         output.write_bytes(b"fake capture")
         return process

@@ -42,6 +42,7 @@ class IntakeRequest:
     tool_path: Path | None = None
     avml_modern: bool = True
     copy_into_case: bool = False
+    winpmem_modern: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -111,7 +112,9 @@ class IntakeService:
                     request.tool_path, acquire_subcommand=request.avml_modern
                 )
             elif host == "Windows":
-                adapter = WindowsWinPmemAdapter(request.tool_path)
+                adapter = WindowsWinPmemAdapter(
+                    request.tool_path, acquire_subcommand=request.winpmem_modern
+                )
             else:
                 raise ValueError("Live capture is currently available on Windows and Linux only.")
             adapter.check_requirements()

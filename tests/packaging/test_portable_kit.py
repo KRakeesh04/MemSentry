@@ -16,7 +16,6 @@ def kit_inputs(tmp_path):
         (bundle / "_internal/library").write_bytes(b"synthetic library")
     assets = tmp_path / "assets"
     (assets / "dump_tools").mkdir(parents=True)
-    (assets / "Rules").mkdir()
     (assets / "env").write_text("MEMSENTRY_WORKSPACE=.\n", encoding="utf-8")
     tools = []
     for name in ("avml", "winpmem.exe"):
@@ -24,7 +23,6 @@ def kit_inputs(tmp_path):
         (assets / "dump_tools" / name).write_bytes(data)
         tools.append({"file": name, "sha256": hashlib.sha256(data).hexdigest()})
     (assets / "tools.json").write_text(json.dumps({"tools": tools}), encoding="utf-8")
-    (assets / "Rules/test.yara").write_text("rule test { condition: false }", encoding="utf-8")
     # Existing workspace contents must never be copied into release kits.
     (assets / "cases").mkdir()
     (assets / "cases/private.raw").write_bytes(b"synthetic evidence")
@@ -40,10 +38,15 @@ def test_kit_contains_both_apps_clean_workspace_and_verified_assets(tmp_path, ki
         for name in (
             "Linux/MemSentry", "Windows/MemSentry.exe", "Linux/_internal/library",
             "Windows/_internal/library", "MemSentryCases/cases/", "MemSentryCases/symbols/",
-            "MemSentryCases/settings/", "MemSentryCases/env", "MemSentryCases/Rules/test.yara",
+            "MemSentryCases/settings/", "MemSentryCases/env",
             "MemSentryCases/dump_tools/avml", "Start-Linux.sh", "Start-Windows.cmd",
         ):
             assert f"MemSentry/{name}" in names
+        rules_dir = Path(__file__).resolve().parents[2] / "resources/yara"
+        rules = list(rules_dir.glob("*.yara")) + list(rules_dir.glob("*.yar"))
+        assert rules
+        for rule in rules:
+            assert zipped.read(f"MemSentry/MemSentryCases/Rules/{rule.name}") == rule.read_bytes()
         assert not any("private.raw" in name for name in names)
         assert zipped.getinfo("MemSentry/Linux/MemSentry").external_attr >> 16 & 0o111
         manifest = json.loads(zipped.read("MemSentry/manifest.json"))

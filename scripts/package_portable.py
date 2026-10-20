@@ -61,8 +61,8 @@ def build_portable(
             target = workspace / "dump_tools" / tool["file"]
             shutil.copy2(assets / "dump_tools" / tool["file"], target)
             target.chmod(0o755)
-        rules = sorted((assets / "Rules").glob("*.yara")) + sorted(
-            (assets / "Rules").glob("*.yar")
+        rules = sorted((ROOT / "resources/yara").glob("*.yara")) + sorted(
+            (ROOT / "resources/yara").glob("*.yar")
         )
         if not rules:
             raise ValueError("The portable kit requires at least one YARA rule.")

@@ -93,8 +93,7 @@ exclude = [
     ".git",
     ".venv",
     "build",
-    "dist",
-    "runtime"
+    "dist"
 ]
 
 
@@ -135,8 +134,7 @@ pretty = true
 
 exclude = [
     "^build/",
-    "^dist/",
-    "^runtime/"
+    "^dist/"
 ]
 
 

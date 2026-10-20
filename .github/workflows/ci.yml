@@ -20,11 +20,12 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
+          - windows-latest
         python-version:
           - "3.11"
 
     steps:
-      - name: Check out merged main commit
+      - name: Check out code
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -38,6 +39,7 @@ jobs:
             pyproject.toml
 
       - name: Install system dependencies
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -52,7 +54,14 @@ jobs:
       - name: Run Ruff
         run: python -m ruff check
 
-      - name: Run tests
+      - name: Run tests on Linux
+        if: runner.os == 'Linux'
         env:
           QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a python -m pytest -q
+        run: xvfb-run -a python -m pytest --test-os=linux -q
+
+      - name: Run tests on Windows
+        if: runner.os == 'Windows'
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest --test-os=windows -q

@@ -29,6 +29,9 @@ class VerificationResult:
     signature_valid: bool
     key_fingerprint: str
     reason: str
+    report_sha256: str = ""
+    algorithm: str = ""
+    signed_at_utc: str = ""
 
 
 class ReportSigningService:
@@ -74,6 +77,39 @@ class ReportSigningService:
         public_key_path.write_bytes(public_pem)
         logger.info("Generated new report signing key pair in %s", self.key_dir)
         return private_key, public_key
+
+    def get_local_key_fingerprint(self) -> str | None:
+        """Return the SHA-256 fingerprint of the local MemSentry public signing key, or None if no key exists."""
+        public_key_path = self.key_dir / "report_signing_key.pub"
+        if public_key_path.is_file():
+            try:
+                pem_bytes = public_key_path.read_bytes()
+                key = serialization.load_pem_public_key(pem_bytes)
+                if isinstance(key, ed25519.Ed25519PublicKey):
+                    raw_pub = key.public_bytes(
+                        encoding=serialization.Encoding.Raw,
+                        format=serialization.PublicFormat.Raw,
+                    )
+                    return hashlib.sha256(raw_pub).hexdigest()
+            except Exception as exc:
+                logger.warning("Failed to load local public key: %s", exc)
+
+        private_key_path = self.key_dir / "report_signing_key.pem"
+        if private_key_path.is_file():
+            try:
+                pem_bytes = private_key_path.read_bytes()
+                key = serialization.load_pem_private_key(pem_bytes, password=None)
+                if isinstance(key, ed25519.Ed25519PrivateKey):
+                    pub_key = key.public_key()
+                    raw_pub = pub_key.public_bytes(
+                        encoding=serialization.Encoding.Raw,
+                        format=serialization.PublicFormat.Raw,
+                    )
+                    return hashlib.sha256(raw_pub).hexdigest()
+            except Exception as exc:
+                logger.warning("Failed to load local private key: %s", exc)
+
+        return None
 
     def sign_file(self, report_path: Path) -> Path:
         """Sign final on-disk report bytes and write detached <report>.sig.json manifest."""
@@ -130,12 +166,13 @@ class ReportSigningService:
             if not isinstance(manifest, dict):
                 raise ValueError("Manifest content is not a JSON object")
 
-            expected_sha256 = manifest["report_sha256"]
-            signature_b64 = manifest["signature_base64"]
-            public_key_b64 = manifest["public_key_base64"]
-            manifest_fingerprint = manifest["key_fingerprint_sha256"]
-            algorithm = manifest.get("algorithm")
-            digest_algo = manifest.get("digest_algorithm")
+            expected_sha256 = str(manifest.get("report_sha256", ""))
+            signature_b64 = str(manifest.get("signature_base64", ""))
+            public_key_b64 = str(manifest.get("public_key_base64", ""))
+            manifest_fingerprint = str(manifest.get("key_fingerprint_sha256", ""))
+            algorithm = str(manifest.get("algorithm", ""))
+            digest_algo = str(manifest.get("digest_algorithm", ""))
+            signed_at_utc = str(manifest.get("signed_at_utc", ""))
 
             if algorithm != "Ed25519" or digest_algo != "SHA-256":
                 raise ValueError(f"Unsupported algorithm suite: {algorithm}/{digest_algo}")
@@ -160,6 +197,9 @@ class ReportSigningService:
                 signature_valid=False,
                 key_fingerprint=computed_fingerprint,
                 reason="Manifest key fingerprint mismatch",
+                report_sha256=expected_sha256,
+                algorithm=algorithm,
+                signed_at_utc=signed_at_utc,
             )
 
         if not report_path.is_file():
@@ -169,6 +209,9 @@ class ReportSigningService:
                 signature_valid=False,
                 key_fingerprint=computed_fingerprint,
                 reason=f"Report file not found: {report_path.name}",
+                report_sha256=expected_sha256,
+                algorithm=algorithm,
+                signed_at_utc=signed_at_utc,
             )
 
         report_bytes = report_path.read_bytes()
@@ -182,6 +225,9 @@ class ReportSigningService:
                 signature_valid=False,
                 key_fingerprint=computed_fingerprint,
                 reason="Report hash mismatch: content modified",
+                report_sha256=actual_sha256,
+                algorithm=algorithm,
+                signed_at_utc=signed_at_utc,
             )
 
         try:
@@ -194,6 +240,9 @@ class ReportSigningService:
                 signature_valid=False,
                 key_fingerprint=computed_fingerprint,
                 reason="Invalid signature",
+                report_sha256=actual_sha256,
+                algorithm=algorithm,
+                signed_at_utc=signed_at_utc,
             )
         except Exception as exc:
             return VerificationResult(
@@ -202,6 +251,9 @@ class ReportSigningService:
                 signature_valid=False,
                 key_fingerprint=computed_fingerprint,
                 reason=f"Signature verification error: {exc}",
+                report_sha256=actual_sha256,
+                algorithm=algorithm,
+                signed_at_utc=signed_at_utc,
             )
 
         return VerificationResult(
@@ -210,6 +262,9 @@ class ReportSigningService:
             signature_valid=True,
             key_fingerprint=computed_fingerprint,
             reason="Valid and unmodified",
+            report_sha256=actual_sha256,
+            algorithm=algorithm,
+            signed_at_utc=signed_at_utc,
         )
 
 

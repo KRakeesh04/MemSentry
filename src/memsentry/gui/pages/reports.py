@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from memsentry.app.case_service import workspace_database
 from memsentry.app.report_service import ReportService
+from memsentry.gui.details_dialog import DetailsDialog
 from memsentry.models.case import Case
 from memsentry.models.report import ReportOptions
 from memsentry.reports.exporters.html_exporter import HtmlReportExporter
@@ -146,6 +147,11 @@ class ReportsPage(QScrollArea):
         self.btn_generate.setEnabled(False)
 
         actions.addWidget(self.btn_generate)
+
+        self.btn_verify = QPushButton("Verify signed report…")
+        self.btn_verify.clicked.connect(self._verify_signed_report)
+        actions.addWidget(self.btn_verify)
+
         actions.addStretch()
         layout.addLayout(actions)
 
@@ -287,6 +293,104 @@ class ReportsPage(QScrollArea):
             logger.exception("Failed to generate report")
             self.status_label.setText(f"❌ Failed to generate report: {exc}")
             QMessageBox.critical(self, "Error", f"Failed to generate report:\n{exc}")
+
+    def _verify_signed_report(self) -> None:
+        """Verify an exported report against its detached .sig.json signature manifest."""
+        current_dir = self.output_dir_input.text().strip() or self.workspace_path or ""
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Report File to Verify",
+            current_dir,
+            "MemSentry Reports (*.html *.json);;All Files (*)",
+        )
+        if not file_path:
+            return
+
+        report_path = Path(file_path)
+        manifest_path = report_path.with_name(f"{report_path.name}.sig.json")
+        if not manifest_path.is_file():
+            QMessageBox.warning(
+                self,
+                "Signature Manifest Missing",
+                f"Could not find the detached signature manifest for:\n\n{report_path.name}\n\n"
+                f"Expected manifest file:\n{manifest_path.name}\n\nat:\n{manifest_path.parent}",
+            )
+            return
+
+        signer = ReportSigningService()
+        result = signer.verify_file(report_path, manifest_path)
+        local_fingerprint = signer.get_local_key_fingerprint()
+
+        # Determine overall result, description, and trust status
+        if not result.hash_matches and not result.signature_valid and (
+            "manifest" in result.reason.lower()
+            or "json" in result.reason.lower()
+            or "suite" in result.reason.lower()
+        ):
+            overall_result = "INVALID SIGNATURE MANIFEST"
+            description = (
+                "✗ The detached signature manifest is missing, corrupt, or malformed:\n"
+                f"{result.reason}"
+            )
+            trusted_match = "N/A"
+        elif not result.hash_matches:
+            overall_result = "TAMPERED / MODIFIED"
+            description = (
+                "✗ Report content has changed since signing.\n"
+                "The computed SHA-256 hash does not match the signed manifest."
+            )
+            trusted_match = "N/A (integrity check failed)"
+        elif not result.signature_valid:
+            overall_result = "INVALID SIGNATURE"
+            description = (
+                "✗ Digital signature is invalid.\n"
+                "The cryptographic signature failed verification against the report digest."
+            )
+            trusted_match = "N/A (signature invalid)"
+        else:
+            # Hash matches and signature is cryptographically valid
+            matches_local = (
+                local_fingerprint is not None
+                and local_fingerprint.lower() == result.key_fingerprint.lower()
+            )
+            if matches_local:
+                overall_result = "VERIFIED"
+                description = (
+                    "✓ Report content unchanged\n"
+                    "✓ Ed25519 signature valid\n"
+                    "✓ Signing key matches this MemSentry installation"
+                )
+                trusted_match = "Yes (Matches local MemSentry signing key)"
+            else:
+                overall_result = "VALID SIGNATURE — UNTRUSTED/UNKNOWN KEY"
+                description = (
+                    "✓ Report content unchanged\n"
+                    "✓ Signature valid\n"
+                    "⚠ Signing key is not the trusted key from this MemSentry installation"
+                )
+                if local_fingerprint is None:
+                    trusted_match = "No (No local MemSentry signing key configured)"
+                else:
+                    trusted_match = f"No (Differs from local key: {local_fingerprint[:16]}…)"
+
+        fields = [
+            ("Result", overall_result),
+            ("Report", report_path.name),
+            ("SHA-256", result.report_sha256 or "N/A"),
+            ("Signature algorithm", result.algorithm or "Ed25519 / SHA-256"),
+            ("Signing key fingerprint", result.key_fingerprint or "N/A"),
+            ("Trusted local key match", trusted_match),
+            ("Signed at UTC", result.signed_at_utc or "N/A"),
+        ]
+
+        dialog = DetailsDialog(
+            title="Report Signature Verification",
+            heading=overall_result,
+            fields=fields,
+            description=description,
+            parent=self,
+        )
+        dialog.exec()
 
 
 def create_page() -> ReportsPage:

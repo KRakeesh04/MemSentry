@@ -13,6 +13,8 @@ from memsentry.acquisition.windows_elevation import (
     WindowsAPI,
 )
 
+pytestmark = pytest.mark.windows
+
 
 def native_api(launch):
     api = object.__new__(WindowsAPI)

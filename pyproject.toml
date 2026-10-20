@@ -70,6 +70,9 @@ addopts = [
 ]
 
 markers = [
+    "windows: Tests requiring a Windows host.",
+    "linux: Tests requiring a Linux host.",
+    "macos: Tests requiring a macOS host.",
     "unit: Fast unit tests.",
     "integration: Tests involving multiple components.",
     "gui: Tests requiring PySide6.",

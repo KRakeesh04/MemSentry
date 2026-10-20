@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -16,7 +15,7 @@ def test_debian_architecture_names() -> None:
         debian_architecture("i686")
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="DEB packaging requires dpkg-deb on Linux.")
+@pytest.mark.linux
 def test_debian_package_contains_bundle_launcher_and_desktop_entry(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

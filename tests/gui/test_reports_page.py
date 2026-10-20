@@ -134,3 +134,101 @@ def test_reports_page_generate_single_format(qtbot, tmp_path, monkeypatch):
 
     assert json_file.exists()
     assert not html_file.exists()
+    # Unsigned by default in this test setup
+    assert not (out_dir / "MemSentry-Report-CASE-999.json.sig.json").exists()
+
+
+def test_reports_page_generate_with_digital_signing(qtbot, tmp_path, monkeypatch):
+    _db, case = _create_test_case(tmp_path)
+    out_dir = tmp_path / "signed_reports"
+    keys_dir = tmp_path / "app_keys"
+
+    settings_file = str(tmp_path / "test_settings.ini")
+    ini = QSettings(settings_file, QSettings.Format.IniFormat)
+    ini.setValue("reporting/format", "both")
+    ini.setValue("reporting/output_directory", str(out_dir))
+    ini.setValue("reporting/sign_reports", "true")
+
+    monkeypatch.setattr(
+        "memsentry.gui.pages.reports.QSettings",
+        lambda *_: QSettings(settings_file, QSettings.Format.IniFormat),
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_: QMessageBox.StandardButton.Ok)
+
+    # Point ReportSigningService default key dir to keys_dir
+    from memsentry.reports import signer
+    orig_init = signer.ReportSigningService.__init__
+    monkeypatch.setattr(
+        signer.ReportSigningService,
+        "__init__",
+        lambda self, key_dir=None: orig_init(self, key_dir=key_dir or keys_dir),
+    )
+
+    page = ReportsPage()
+    qtbot.addWidget(page)
+    page.open_case(str(tmp_path), case)
+
+    assert page.chk_sign.isChecked()
+    page.btn_generate.click()
+
+    html_file = out_dir / "MemSentry-Report-CASE-999.html"
+    json_file = out_dir / "MemSentry-Report-CASE-999.json"
+    html_sig = out_dir / "MemSentry-Report-CASE-999.html.sig.json"
+    json_sig = out_dir / "MemSentry-Report-CASE-999.json.sig.json"
+
+    assert html_file.exists()
+    assert json_file.exists()
+    assert html_sig.exists()
+    assert json_sig.exists()
+
+
+def test_reports_page_verify_action(qtbot, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+
+    _db, case = _create_test_case(tmp_path)
+    out_dir = tmp_path / "verified_reports"
+    keys_dir = tmp_path / "app_keys"
+
+    # Export a signed report first
+    from memsentry.reports import signer
+    orig_init = signer.ReportSigningService.__init__
+    monkeypatch.setattr(
+        signer.ReportSigningService,
+        "__init__",
+        lambda self, key_dir=None: orig_init(self, key_dir=key_dir or keys_dir),
+    )
+
+    settings_file = str(tmp_path / "test_settings.ini")
+    ini = QSettings(settings_file, QSettings.Format.IniFormat)
+    ini.setValue("reporting/format", "html")
+    ini.setValue("reporting/output_directory", str(out_dir))
+    ini.setValue("reporting/sign_reports", "true")
+
+    monkeypatch.setattr(
+        "memsentry.gui.pages.reports.QSettings",
+        lambda *_: QSettings(settings_file, QSettings.Format.IniFormat),
+    )
+    monkeypatch.setattr(QMessageBox, "information", lambda *_: QMessageBox.StandardButton.Ok)
+
+    page = ReportsPage()
+    qtbot.addWidget(page)
+    page.open_case(str(tmp_path), case)
+    page.btn_generate.click()
+
+    html_file = out_dir / "MemSentry-Report-CASE-999.html"
+    assert html_file.exists()
+
+    # Verify action mock
+    monkeypatch.setattr(QFileDialog, "getOpenFileName", lambda *args, **kwargs: (str(html_file), "HTML"))
+
+    dialog_captured = []
+    from memsentry.gui.details_dialog import DetailsDialog
+    def mock_exec(self):
+        dialog_captured.append(self)
+        return DetailsDialog.DialogCode.Accepted
+
+    monkeypatch.setattr(DetailsDialog, "exec", mock_exec)
+
+    page.btn_verify.click()
+    assert len(dialog_captured) == 1
+    assert dialog_captured[0].windowTitle() == "Report Signature Verification"

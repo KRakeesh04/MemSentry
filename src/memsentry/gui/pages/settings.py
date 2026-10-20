@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QSettings, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QFormLayout,
     QFrame,
@@ -141,6 +142,9 @@ class SettingsPage(QScrollArea):
         rpt_row.addWidget(rpt_browse)
         rpt_form.addRow("Default Output Path", rpt_row)
 
+        self.report_sign_choice = QCheckBox("Digitally sign reports by default")
+        rpt_form.addRow("Digital Signature", self.report_sign_choice)
+
         rpt_box.addLayout(rpt_form)
         layout.addWidget(rpt_card)
 
@@ -240,6 +244,12 @@ class SettingsPage(QScrollArea):
         rpt_output = str(qsettings.value("reporting/output_directory", ""))
         self.report_output_input.setText(rpt_output)
 
+        rpt_sign = str(qsettings.value("reporting/sign_reports", "false")).lower() in (
+            "true",
+            "1",
+        )
+        self.report_sign_choice.setChecked(rpt_sign)
+
         # Refresh acquisition tools list
         while self.tools_layout.count():
             item = self.tools_layout.takeAt(0)
@@ -276,6 +286,9 @@ class SettingsPage(QScrollArea):
 
         rpt_output = self.report_output_input.text().strip()
         qsettings.setValue("reporting/output_directory", rpt_output)
+
+        rpt_sign = "true" if self.report_sign_choice.isChecked() else "false"
+        qsettings.setValue("reporting/sign_reports", rpt_sign)
 
         symbols_path = self.symbols_input.text().strip()
         if symbols_path:
